@@ -1,31 +1,46 @@
+import { generateStoreSlideImage, streamStoreSlideGeneration } from "@/lib/openaiImageService";
+import type { GenerateImageResult } from "@/lib/imageStreamEvents";
+
+export type { GenerateImageResult };
+
+type GenerateStoreSlideInput = Parameters<typeof generateStoreSlideImage>[0];
+
 type GenerateImageInput = {
   prompt: string;
   screenshot: File;
-};
-
-type GenerateImageResult = {
-  imageUrl?: string;
-  dataUrl?: string;
 };
 
 export async function generatePromoImageWithProvider({
   prompt,
   screenshot,
 }: GenerateImageInput): Promise<GenerateImageResult> {
+  return generateStoreSlideImage({ prompt, screenshot, size: "1024x1024" });
+}
+
+export async function generateStoreSlideImageNonStream(input: GenerateStoreSlideInput) {
   const provider = process.env.AI_PROVIDER || "";
 
   if (!provider) {
-    return {};
+    return {} as GenerateImageResult;
+  }
+
+  if (provider === "openai") {
+    return generateStoreSlideImage(input);
   }
 
   if (provider === "custom") {
-    return generateWithCustomEndpoint({ prompt, screenshot });
+    if (!input.screenshot) {
+      throw new Error("Custom provider requires a screenshot for store slide generation.");
+    }
+    return generateWithCustomEndpoint({ prompt: input.prompt, screenshot: input.screenshot });
   }
 
   throw new Error(`Unsupported AI_PROVIDER: ${provider}`);
 }
 
-async function generateWithCustomEndpoint({ prompt, screenshot }: GenerateImageInput) {
+export { generateStoreSlideImage, streamStoreSlideGeneration };
+
+async function generateWithCustomEndpoint({ prompt, screenshot }: { prompt: string; screenshot: File }) {
   const endpoint = process.env.AI_PROVIDER_ENDPOINT;
   const apiKey = process.env.AI_PROVIDER_API_KEY;
 
@@ -48,7 +63,6 @@ async function generateWithCustomEndpoint({ prompt, screenshot }: GenerateImageI
   }
 
   const result = await response.json();
-
   const base64Image = result.b64_json ? `data:image/png;base64,${result.b64_json}` : undefined;
 
   return {

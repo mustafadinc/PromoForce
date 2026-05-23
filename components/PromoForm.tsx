@@ -27,8 +27,8 @@ export function PromoForm({
       <div className="brand-row">
         <div className="brand-mark">LF</div>
         <div>
-          <p className="eyebrow">AI promo studio</p>
-          <h1>LaunchFrame AI</h1>
+          <p className="eyebrow">Marketing Automation</p>
+          <h1>LaunchFrame Pipeline</h1>
         </div>
       </div>
 
@@ -106,7 +106,7 @@ export function PromoForm({
         {errorMessage ? <p className="error-message">{errorMessage}</p> : null}
 
         <button className="primary-action" type="submit" disabled={isGenerating}>
-          {isGenerating ? "Generating..." : "Generate Promo Image"}
+          {isGenerating ? "Preparing Campaign..." : "Start Marketing Pipeline"}
         </button>
       </form>
     </aside>

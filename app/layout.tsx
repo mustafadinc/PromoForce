@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LaunchFrame AI",
-  description: "Generate premium Instagram promo images from mobile app screenshots.",
+  title: "PromoForce",
+  description: "AI marketing pipeline for app store screenshots, social launch packs, and autopilot content calendars.",
 };
 
 export default function RootLayout({

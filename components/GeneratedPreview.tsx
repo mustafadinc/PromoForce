@@ -22,8 +22,8 @@ export function GeneratedPreview({ canvasRef, generatedImageUrl, prompt }: Gener
     <section className="preview-panel">
       <div className="preview-toolbar">
         <div>
-          <p className="eyebrow">Instagram post preview</p>
-          <h2>Premium launch creative</h2>
+          <p className="eyebrow">Pipeline Preview</p>
+          <h2>Today's Campaign Post</h2>
         </div>
         <button className="secondary-action" type="button" disabled={!generatedImageUrl} onClick={handleDownload}>
           Download
@@ -35,7 +35,7 @@ export function GeneratedPreview({ canvasRef, generatedImageUrl, prompt }: Gener
         {!generatedImageUrl ? (
           <div className="empty-state">
             <span>1080 x 1080</span>
-            <p>Your generated Instagram promo image will appear here.</p>
+            <p>Your automated daily Instagram posts will appear here.</p>
           </div>
         ) : null}
       </div>

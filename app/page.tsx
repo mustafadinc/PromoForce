@@ -1,9 +1,9 @@
-import { PromoGenerator } from "@/components/PromoGenerator";
+import { CampaignPipeline } from "@/components/CampaignPipeline";
 
 export default function Home() {
   return (
     <main className="shell">
-      <PromoGenerator />
+      <CampaignPipeline />
     </main>
   );
 }
