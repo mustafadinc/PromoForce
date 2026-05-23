@@ -25,6 +25,18 @@ export function extractScreenshots(formData: FormData): File[] {
   return entries.filter((entry): entry is File => entry instanceof File && entry.size > 0);
 }
 
+/** Prefer single slide attachment; fall back to indexed multi-upload for legacy callers. */
+export function extractSlideScreenshot(formData: FormData, screenshotIndex: number | null): File | null {
+  const single = formData.get("screenshot");
+  if (single instanceof File && single.size > 0) return single;
+
+  const all = extractScreenshots(formData);
+  if (screenshotIndex !== null && screenshotIndex >= 0 && all[screenshotIndex]) {
+    return all[screenshotIndex]!;
+  }
+  return all[0] ?? null;
+}
+
 export function validateAppProfile(profile: AppProfile) {
   if (!profile.appName || !profile.category || !profile.description) {
     return "App name, category, and description are required.";

@@ -1,5 +1,6 @@
 import type { AppProfile, AutopilotStrategyBrief, CalendarPostPlan } from "@/lib/campaignTypes";
 import { socialPlatformMeta } from "@/lib/campaignTypes";
+import { buildScreenshotColorHarmonyBlock } from "@/lib/applyScreenshotColorHarmony";
 import {
   backgroundPromptCompositionBlock,
   backgroundPromptExclusionsBlock,
@@ -21,7 +22,9 @@ export function buildAutopilotPostBackgroundPrompt(
     "",
     backgroundPromptExclusionsBlock(),
     "",
-    backgroundPromptQualityBlock(),
+    backgroundPromptQualityBlock(strategy.colorProfile),
+    "",
+    buildScreenshotColorHarmonyBlock(strategy.colorProfile),
     "",
     "CREATIVE DIRECTION:",
     `- App: "${profile.appName}" (${profile.category})`,
@@ -29,6 +32,8 @@ export function buildAutopilotPostBackgroundPrompt(
     `- Visual style: ${post.visualStyle}`,
     `- Calendar theme: ${strategy.visualTheme}`,
     `- Brand voice: ${strategy.brandVoice}`,
+    strategy.accentColor ? `- Accent color: ${strategy.accentColor}` : "",
+    strategy.brandColor ? `- Gradient secondary: ${strategy.brandColor}` : "",
     "",
     sessionBrandMemory,
     "",

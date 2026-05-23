@@ -12,6 +12,7 @@ import {
 import { formatBrandMemoryForPrompt } from "@/lib/brandMemory";
 import { buildCopyVariants, ensureCopyVariants } from "@/lib/copyVariants";
 import { fileToStrategyImage } from "@/lib/agents/strategyAgent";
+import { coerceStrategyText } from "@/lib/strategyText";
 
 type StrategyImageInput = {
   index: number;
@@ -44,6 +45,7 @@ function buildFallbackPost(
   day: number,
   duration: CalendarDuration,
   screenshotCount: number,
+  startDate: string,
 ): CalendarPostPlan {
   const platform = platforms[(day - 1) % platforms.length];
   const role = roles[(day - 1) % roles.length];
@@ -64,10 +66,20 @@ function buildFallbackPost(
     behind_the_scenes: "Behind the build",
   };
 
+  const scheduledTime = times[(day - 1) % times.length];
+  const scheduledDate = new Date(startDate);
+  scheduledDate.setDate(scheduledDate.getDate() + day - 1);
+  const [h, m] = scheduledTime.split(":").map(Number);
+  scheduledDate.setHours(h || 9, m || 0, 0, 0);
+
   return ensureCopyVariants({
     day,
     platform,
     role,
+    format: day % 7 === 0 ? "reels" : day % 5 === 0 ? "carousel" : "single",
+    phaseId: day <= 5 ? "tease" : day <= 12 ? "launch" : day <= 22 ? "education" : "community",
+    visualTemplate: day % 4 === 0 ? "quote_card" : "hero_mockup",
+    videoTemplate: day % 7 === 0 ? "mood_teaser" : undefined,
     headline: day === 1 ? profile.appName : headlines[role],
     subheadline: profile.description.slice(0, 100),
     hook:
@@ -88,9 +100,26 @@ function buildFallbackPost(
       : "Text-only post for variety and feed balance.",
     visualStyle: "Cohesive calendar aesthetic with premium mobile app marketing polish.",
     imageSize: socialPlatformMeta[platform].imageSize,
-    scheduledTime: times[(day - 1) % times.length],
+    scheduledTime,
+    scheduledAt: scheduledDate.toISOString(),
     selectedVariantId: "A",
   });
+}
+
+function buildFallbackPhases(duration: CalendarDuration) {
+  if (duration === 7) {
+    return [
+      { id: "launch", name: "Launch", goal: "Announce", dayStart: 1, dayEnd: 3, narrativeFocus: "Hero + problem" },
+      { id: "value", name: "Value", goal: "Educate", dayStart: 4, dayEnd: 5, narrativeFocus: "Features" },
+      { id: "cta", name: "CTA", goal: "Convert", dayStart: 6, dayEnd: 7, narrativeFocus: "Download" },
+    ];
+  }
+  return [
+    { id: "tease", name: "Pre-launch", goal: "Curiosity", dayStart: 1, dayEnd: 5, narrativeFocus: "Tease" },
+    { id: "launch", name: "Launch", goal: "Downloads", dayStart: 6, dayEnd: 12, narrativeFocus: "Demo + proof" },
+    { id: "education", name: "Education", goal: "Retain", dayStart: 13, dayEnd: 22, narrativeFocus: "Tips" },
+    { id: "community", name: "Community", goal: "Engage", dayStart: 23, dayEnd: 30, narrativeFocus: "UGC + CTA" },
+  ];
 }
 
 function buildFallbackAutopilotStrategy(
@@ -108,8 +137,9 @@ function buildFallbackAutopilotStrategy(
     duration,
     startDate,
     contentPillars: ["Product value", "Feature education", "Community engagement", "Launch momentum"],
+    phases: buildFallbackPhases(duration),
     posts: Array.from({ length: duration }, (_, index) =>
-      buildFallbackPost(profile, index + 1, duration, screenshotCount),
+      buildFallbackPost(profile, index + 1, duration, screenshotCount, startDate),
     ),
   };
 }
@@ -144,10 +174,20 @@ function normalizePost(raw: Partial<CalendarPostPlan>, index: number, screenshot
     ? raw.hashtags.map((tag) => String(tag).replace(/^#/, "").trim()).filter(Boolean).slice(0, 8)
     : [];
 
+  const format =
+    raw.format === "carousel" || raw.format === "story" || raw.format === "reels" || raw.format === "single"
+      ? raw.format
+      : "single";
+
   return ensureCopyVariants({
     day,
     platform,
     role,
+    format,
+    phaseId: raw.phaseId,
+    visualTemplate: raw.visualTemplate,
+    videoTemplate: raw.videoTemplate,
+    carouselSlides: raw.carouselSlides,
     headline: String(raw.headline || `Day ${day}`).trim(),
     subheadline: String(raw.subheadline || "").trim(),
     hook: String(raw.hook || "").trim(),
@@ -183,6 +223,8 @@ function normalizeAutopilotBrief(
     posts.push(fallback.posts[posts.length]);
   }
 
+  const phases = Array.isArray(raw.phases) && raw.phases.length ? raw.phases : fallback.phases;
+
   const contentPillars = Array.isArray(raw.contentPillars)
     ? raw.contentPillars.map((item) => String(item).trim()).filter(Boolean).slice(0, 6)
     : fallback.contentPillars;
@@ -191,11 +233,12 @@ function normalizeAutopilotBrief(
     positioning: String(raw.positioning || fallback.positioning).trim(),
     primaryMessage: String(raw.primaryMessage || fallback.primaryMessage).trim(),
     targetAudience: String(raw.targetAudience || fallback.targetAudience).trim(),
-    visualTheme: String(raw.visualTheme || fallback.visualTheme).trim(),
+    visualTheme: coerceStrategyText(raw.visualTheme, fallback.visualTheme),
     brandVoice: String(raw.brandVoice || fallback.brandVoice).trim(),
     duration,
     startDate,
     contentPillars,
+    phases,
     posts: posts.map((post, index) => normalizePost(post, index, screenshotCount)),
   };
 }
@@ -208,6 +251,22 @@ export async function generateAutopilotStrategyBrief(
   brandMemory: BrandMemory | null,
   performanceContext = "",
 ): Promise<AutopilotStrategyBrief> {
+  if (process.env.OPENAI_API_KEY || process.env.AI_PROVIDER_API_KEY) {
+    try {
+      const { generateAutopilotStrategyV2 } = await import("@/lib/agents/generateAutopilotStrategyV2");
+      return await generateAutopilotStrategyV2(
+        profile,
+        duration,
+        startDate,
+        images.length,
+        brandMemory,
+        performanceContext,
+      );
+    } catch {
+      // Fall through to legacy single-agent path
+    }
+  }
+
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
   const screenshotCount = images.length;

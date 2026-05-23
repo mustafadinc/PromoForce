@@ -8,6 +8,7 @@ type CopyVariantPickerProps = {
   variantA: { hook: string; caption: string; hashtags: string[] };
   variantB: { hook: string; caption: string; hashtags: string[] };
   disabled?: boolean;
+  showPreview?: boolean;
   onSelect: (variantId: CopyVariantId) => void;
 };
 
@@ -16,6 +17,7 @@ export function CopyVariantPicker({
   variantA,
   variantB,
   disabled,
+  showPreview = true,
   onSelect,
 }: CopyVariantPickerProps) {
   const variants = [
@@ -39,9 +41,11 @@ export function CopyVariantPicker({
           </button>
         ))}
       </div>
-      <pre className="post-copy-preview variant-preview">
-        {formatSocialPostCopy(variants.find((variant) => variant.id === selectedVariantId)?.copy || variantA)}
-      </pre>
+      {showPreview ? (
+        <pre className="post-copy-preview variant-preview">
+          {formatSocialPostCopy(variants.find((variant) => variant.id === selectedVariantId)?.copy || variantA)}
+        </pre>
+      ) : null}
     </div>
   );
 }

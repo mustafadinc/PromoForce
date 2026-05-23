@@ -1,22 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { StoreSlideEditor } from "@/components/StoreSlideEditor";
+import { StrategyCarousel, type CarouselStep } from "@/components/StrategyCarousel";
+import { StrategyToolbar } from "@/components/StrategyToolbar";
+import { coerceStrategyText } from "@/lib/strategyText";
 import type {
   BackgroundTreatment,
   ScreenshotQualityRating,
-  ScreenshotUsage,
   SetMode,
-  SlideLayoutStyle,
   StoreSlidePlan,
   StrategyBrief,
 } from "@/lib/campaignTypes";
-import { normalizeSlideEdit, screenshotUsageOptions } from "@/lib/normalizeSlideEdit";
-import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
+import { normalizeSlideEdit } from "@/lib/normalizeSlideEdit";
 import {
   applyCreativeDirectorDefaults,
   countUniqueBackgroundGenerations,
   describeBackgroundPlan,
-  isSlideSolidBackground,
 } from "@/lib/storeCreativeDirector";
 import type { AppProfile } from "@/lib/campaignTypes";
 import { lintScreenshotAspects } from "@/lib/screenshotAspectLint";
@@ -46,24 +46,11 @@ type StrategyPreviewProps = {
   onCancel?: () => void;
 };
 
-const roleLabels = {
-  hero: "Hero",
-  feature: "Feature",
-  cta: "CTA",
-} as const;
-
 const treatmentLabels: Record<BackgroundTreatment, string> = {
   lifestyle_with_person: "Lifestyle + person",
   lifestyle_environment: "Environment only (no person)",
   abstract_brand: "Abstract brand world",
   cta_brand: "CTA brand atmosphere (AI)",
-};
-
-const layoutLabels: Record<SlideLayoutStyle, string> = {
-  hero_branded: "Hero + branding",
-  lifestyle_focus: "Lifestyle focus",
-  feature_pills: "Feature pills",
-  cta_minimal: "CTA minimal",
 };
 
 const ratingClass: Record<ScreenshotQualityRating, string> = {
@@ -98,6 +85,23 @@ export function StrategyPreview({
   onBack,
   onCancel,
 }: StrategyPreviewProps) {
+  const screenshotCount = screenshotPreviews.length;
+  const [stepIndex, setStepIndex] = useState(0);
+
+  const steps = useMemo<CarouselStep[]>(() => {
+    if (!strategy) return [];
+    return [
+      { id: "brief", label: "Campaign setup", subtitle: "Positioning & set mode" },
+      ...strategy.slides.map((slide) => ({
+        id: `slide-${slide.slideNumber}`,
+        label: `Slide ${slide.slideNumber}`,
+        subtitle: slide.headline.slice(0, 40),
+      })),
+    ];
+  }, [strategy]);
+
+  const aspectIssues = useMemo(() => lintScreenshotAspects(screenshotPreviews), [screenshotPreviews]);
+
   if (!strategy) {
     return (
       <section className="preview-panel">
@@ -108,8 +112,6 @@ export function StrategyPreview({
       </section>
     );
   }
-
-  const screenshotCount = screenshotPreviews.length;
 
   const updateBriefField = (
     field: keyof Pick<
@@ -151,55 +153,59 @@ export function StrategyPreview({
     onStrategyChange({ ...strategy, backgroundScenes, slides });
   };
 
-  const aspectIssues = useMemo(() => lintScreenshotAspects(screenshotPreviews), [screenshotPreviews]);
-
   const hasRetakeScreenshots = strategy.screenshotAssessments?.some((a) => a.rating === "retake");
 
   const updateSlide = (slideNumber: number, patch: Partial<StoreSlidePlan>) => {
     onStrategyChange(updateSlideInStrategy(strategy, slideNumber, patch, screenshotCount));
   };
 
-  return (
-    <section className="preview-panel">
-      <div className="preview-toolbar">
-        <div>
-          <p className="eyebrow">ASO Screenshot Strategy</p>
-          <h2>Review & Edit Conversion Story</h2>
-        </div>
-        <div className="toolbar-actions">
-          {isGenerating ? (
-            <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
-              Cancel
-            </button>
-          ) : null}
-          <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
-            Back
-          </button>
-          {hasEdits ? (
-            <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
-              Reset to AI
-            </button>
-          ) : null}
-          <button
-            className="primary-action compact-action"
-            type="button"
-            onClick={() => onGenerate({ variantsPerSlide: 1 })}
-            disabled={isGenerating}
-          >
-            {isGenerating ? "Generating..." : "Generate 5 Slides"}
-          </button>
-          <button
-            className="secondary-action compact-action"
-            type="button"
-            onClick={() => onGenerate({ variantsPerSlide: 3 })}
-            disabled={isGenerating}
-            title="3 variants per slide — higher API usage"
-          >
-            Generate 3× Variants
-          </button>
-        </div>
-      </div>
+  const isBriefStep = stepIndex === 0;
+  const activeSlide = isBriefStep ? null : strategy.slides[stepIndex - 1];
 
+  return (
+    <section className="preview-panel pf-strategy-panel">
+      <StrategyToolbar
+        eyebrow="ASO Screenshot Strategy"
+        title="Review one slide at a time"
+        actions={
+          <>
+            {isGenerating ? (
+              <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            ) : null}
+            <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
+              Back
+            </button>
+            {hasEdits ? (
+              <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
+                Reset to AI
+              </button>
+            ) : null}
+            <button
+              className="primary-action compact-action"
+              type="button"
+              onClick={() => onGenerate({ variantsPerSlide: 1 })}
+              disabled={isGenerating}
+            >
+              {isGenerating ? "Generating..." : "Generate 5 Slides"}
+            </button>
+            <button
+              className="secondary-action compact-action"
+              type="button"
+              onClick={() => onGenerate({ variantsPerSlide: 3 })}
+              disabled={isGenerating}
+              title="3 variants per slide — higher API usage"
+            >
+              Generate 3× Variants
+            </button>
+          </>
+        }
+      />
+
+      <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>
+        {isBriefStep ? (
+          <div className="pf-carousel-step">
       {hasRetakeScreenshots ? (
         <p className="strategy-warning">
           Some uploaded screenshots are rated <strong>Retake</strong>. Generation will continue, but consider
@@ -253,6 +259,8 @@ export function StrategyPreview({
       </p>
 
       {strategy.backgroundScenes?.length ? (
+        <details className="pf-brief-panel pf-scenes-panel">
+          <summary>Background plan ({strategy.backgroundScenes.length} scenes)</summary>
         <div className="creative-scenes-panel">
           <div className="creative-scenes-header">
             <h3>Background plan</h3>
@@ -308,6 +316,7 @@ export function StrategyPreview({
             ))}
           </div>
         </div>
+        </details>
       ) : null}
 
       {strategy.narrativeArc ? (
@@ -316,7 +325,9 @@ export function StrategyPreview({
         </p>
       ) : null}
 
-      <div className="strategy-summary editable-summary">
+      <details className="pf-brief-panel" open>
+        <summary>Campaign & set settings</summary>
+      <div className="strategy-summary editable-summary pf-strategy-summary">
         <label className="strategy-card field">
           <span>Positioning</span>
           <textarea
@@ -424,12 +435,13 @@ export function StrategyPreview({
           <span>Visual Theme</span>
           <textarea
             rows={3}
-            value={strategy.visualTheme}
+            value={coerceStrategyText(strategy.visualTheme)}
             onChange={(event) => updateBriefField("visualTheme", event.target.value)}
             disabled={isGenerating}
           />
         </label>
       </div>
+      </details>
 
       {strategy.screenshotAssessments?.length ? (
         <div className="screenshot-qa-panel">
@@ -446,291 +458,19 @@ export function StrategyPreview({
         </div>
       ) : null}
 
-      <div className="slide-plan-list">
-        {strategy.slides.map((slide) => (
-          <article key={slide.slideNumber} className="slide-plan-card editable-slide-card">
-            <div className="slide-plan-header">
-              <span className="slide-badge">Slide {slide.slideNumber}</span>
-              <span className="role-badge">{roleLabels[slide.role]}</span>
-              <span className="aso-badge">{storeSlideBeatMeta[slide.asoBeat]?.label || slide.asoBeat}</span>
-              {slide.screenshotRating ? (
-                <span className={`rating-badge ${ratingClass[slide.screenshotRating]}`}>{slide.screenshotRating}</span>
-              ) : null}
-            </div>
-
-            {slide.screenshotRating === "retake" && slide.retakeGuidance ? (
-              <p className="retake-guidance">{slide.retakeGuidance}</p>
-            ) : null}
-            {slide.screenshotIssues?.length ? (
-              <p className="qa-issues slide-qa-issues">{slide.screenshotIssues.join(" · ")}</p>
-            ) : null}
-
-            <p className="slide-conversion-goal">{slide.conversionGoal}</p>
-
-            <div className="creative-slide-meta">
-              <span
-                className={
-                  isSlideSolidBackground(
-                    strategy.setMode,
-                    slide.slideNumber,
-                    strategy.styleAnchorSlide,
-                  )
-                    ? "treatment-badge solid-fill-badge"
-                    : "treatment-badge"
-                }
-              >
-                {isSlideSolidBackground(strategy.setMode, slide.slideNumber, strategy.styleAnchorSlide)
-                  ? `Solid ${strategy.brandColor || strategy.accentColor}`
-                  : treatmentLabels[slide.backgroundTreatment]}
-              </span>
-              <span className="layout-badge">{layoutLabels[slide.layoutStyle]}</span>
-              {!isSlideSolidBackground(strategy.setMode, slide.slideNumber, strategy.styleAnchorSlide) &&
-              slide.backgroundSceneId ? (
-                <span className="scene-id-badge">
-                  Scene: {strategy.backgroundScenes.find((s) => s.id === slide.backgroundSceneId)?.label || slide.backgroundSceneId}
-                </span>
-              ) : null}
-            </div>
-
-            {slide.backgroundRationale ? (
-              <p className="background-rationale">
-                <strong>Why:</strong> {slide.backgroundRationale}
-              </p>
-            ) : null}
-
-            <div className="editable-slide-grid">
-              <label className="field">
-                <span>Action verb (line 1)</span>
-                <input
-                  type="text"
-                  value={slide.headlineVerb}
-                  onChange={(event) => updateSlide(slide.slideNumber, { headlineVerb: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field">
-                <span>Benefit descriptor (line 2)</span>
-                <input
-                  type="text"
-                  value={slide.headlineDescriptor}
-                  onChange={(event) =>
-                    updateSlide(slide.slideNumber, { headlineDescriptor: event.target.value })
-                  }
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Full headline (preview)</span>
-                <input type="text" value={slide.headline} readOnly disabled className="readonly-field" />
-              </label>
-
-              <label className="field">
-                <span>Subheadline</span>
-                <textarea
-                  rows={2}
-                  value={slide.subheadline}
-                  onChange={(event) => updateSlide(slide.slideNumber, { subheadline: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field">
-                <span>Screenshot usage</span>
-                <select
-                  value={slide.screenshotUsage}
-                  onChange={(event) =>
-                    updateSlide(slide.slideNumber, {
-                      screenshotUsage: event.target.value as ScreenshotUsage,
-                    })
-                  }
-                  disabled={isGenerating || screenshotCount === 0}
-                >
-                  {screenshotUsageOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {slide.screenshotUsage !== "none" && screenshotCount > 0 ? (
-                <div className="screenshot-picker-block">
-                  <label className="field screenshot-picker-select">
-                    <span>Which screen</span>
-                    <select
-                      value={slide.screenshotIndex ?? 0}
-                      onChange={(event) =>
-                        updateSlide(slide.slideNumber, {
-                          screenshotIndex: Number(event.target.value),
-                        })
-                      }
-                      disabled={isGenerating}
-                    >
-                      {screenshotPreviews.map((preview) => (
-                        <option key={preview.index} value={preview.index}>
-                          Screen {preview.index + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {slide.screenshotIndex !== null ? (
-                    <div className="screenshot-picker-preview">
-                      <img
-                        src={screenshotPreviews[slide.screenshotIndex]?.previewUrl}
-                        alt={`Selected screen ${slide.screenshotIndex + 1}`}
-                      />
-                      {slide.screenshotRationale ? (
-                        <p className="screenshot-rationale">{slide.screenshotRationale}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="field field-wide text-only-slide-note">
-                  <span>Preview</span>
-                  <p className="text-only-note">Text-only slide. No app screenshot will be sent to the model.</p>
-                </div>
-              )}
-
-              <label className="field">
-                <span>Headline accent (gradient highlight)</span>
-                <input
-                  type="text"
-                  value={slide.headlineAccent}
-                  onChange={(event) => updateSlide(slide.slideNumber, { headlineAccent: event.target.value })}
-                  disabled={isGenerating}
-                  placeholder="e.g. deep work"
-                />
-              </label>
-
-              <label className="field">
-                <span>Background scene</span>
-                <select
-                  value={slide.backgroundSceneId || ""}
-                  onChange={(event) =>
-                    assignBackgroundSceneToSlide(slide.slideNumber, event.target.value || null)
-                  }
-                  disabled={
-                    isGenerating ||
-                    isSlideSolidBackground(strategy.setMode, slide.slideNumber, strategy.styleAnchorSlide)
-                  }
-                >
-                  <option value="">—</option>
-                  {strategy.backgroundScenes.map((scene) => (
-                    <option key={scene.id} value={scene.id}>
-                      {scene.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>Show app branding bar</span>
-                <select
-                  value={slide.showAppBranding ? "yes" : "no"}
-                  onChange={(event) =>
-                    updateSlide(slide.slideNumber, { showAppBranding: event.target.value === "yes" })
-                  }
-                  disabled={isGenerating}
-                >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </label>
-
-              {strategy.setMode === "lifestyle" ? (
-                <label className="field">
-                  <span>Background treatment</span>
-                  <select
-                    value={slide.backgroundTreatment}
-                    onChange={(event) =>
-                      updateSlide(slide.slideNumber, {
-                        backgroundTreatment: event.target.value as BackgroundTreatment,
-                      })
-                    }
-                    disabled={isGenerating}
-                  >
-                    {Object.entries(treatmentLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
-              <label className="field">
-                <span>Layout style</span>
-                <select
-                  value={slide.layoutStyle}
-                  onChange={(event) =>
-                    updateSlide(slide.slideNumber, {
-                      layoutStyle: event.target.value as SlideLayoutStyle,
-                    })
-                  }
-                  disabled={isGenerating}
-                >
-                  {Object.entries(layoutLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field field-wide">
-                <span>Feature pills (hook slide, comma-separated)</span>
-                <input
-                  type="text"
-                  value={slide.featureHighlights.join(", ")}
-                  onChange={(event) =>
-                    updateSlide(slide.slideNumber, {
-                      featureHighlights: event.target.value
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  disabled={isGenerating}
-                  placeholder="Ready Routines, App Blocking, AI Coach"
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Background rationale</span>
-                <textarea
-                  rows={2}
-                  value={slide.backgroundRationale}
-                  onChange={(event) => updateSlide(slide.slideNumber, { backgroundRationale: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Visual variant (scene mood)</span>
-                <textarea
-                  rows={2}
-                  value={slide.visualVariant}
-                  onChange={(event) => updateSlide(slide.slideNumber, { visualVariant: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Layout direction</span>
-                <textarea
-                  rows={2}
-                  value={slide.visualStyle}
-                  onChange={(event) => updateSlide(slide.slideNumber, { visualStyle: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-            </div>
-          </article>
-        ))}
-      </div>
+          </div>
+        ) : activeSlide ? (
+          <StoreSlideEditor
+            slide={activeSlide}
+            strategy={strategy}
+            screenshotPreviews={screenshotPreviews}
+            screenshotCount={screenshotCount}
+            isGenerating={isGenerating}
+            onUpdateSlide={(patch) => updateSlide(activeSlide.slideNumber, patch)}
+            onAssignScene={(sceneId) => assignBackgroundSceneToSlide(activeSlide.slideNumber, sceneId)}
+          />
+        ) : null}
+      </StrategyCarousel>
     </section>
   );
 }

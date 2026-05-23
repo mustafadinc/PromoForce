@@ -1,7 +1,23 @@
 "use client";
 
 import { consumeAssetStream, GenerationCancelledError } from "@/lib/consumeAssetStream";
-import { useMemo, useRef, useState } from "react";
+import { stripFormQueryParamsFromUrl } from "@/lib/cleanBrowserUrl";
+import {
+  buildCampaignPipelineUrl,
+  phaseToStep,
+  readCampaignTypeFromLocation,
+  readPhaseFromLocation,
+  stepToPhase,
+  type CampaignStep,
+} from "@/lib/campaignPipelineUrl";
+import {
+  clearCampaignSession,
+  loadCampaignSession,
+  saveCampaignSession,
+  serializeCampaignSession,
+} from "@/lib/campaignSessionPersistence";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatPerformanceForPrompt } from "@/lib/performanceMemory";
 import { canGenerate, recordGenerations } from "@/lib/usageLimits";
 import {
@@ -10,6 +26,8 @@ import {
   saveBrandMemory,
 } from "@/lib/brandMemory";
 import { addDaysToDate } from "@/lib/scheduleUtils";
+import { persistCampaignAsset } from "@/lib/client/persistCampaignAsset";
+import { dataUrlToBase64Payload } from "@/lib/compactClientImage";
 import { resolveLockedTypographyForSlide } from "@/lib/resolveLockedTypography";
 import type {
   AppProfile,
@@ -24,11 +42,10 @@ import type {
   SocialStrategyBrief,
   StoreSlidePlan,
   StoreSlideRegenerateMode,
+  StoreSlideRegenerateOptions,
   StrategyBrief,
   UploadedScreenshot,
 } from "@/lib/campaignTypes";
-
-type CampaignStep = "setup" | "strategy" | "gallery";
 
 function jsonEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -48,7 +65,9 @@ async function resolveDataUrl(imageSource: string) {
 }
 
 export function useCampaignPipeline() {
+  const router = useRouter();
   const [step, setStep] = useState<CampaignStep>("setup");
+  const [sessionReady, setSessionReady] = useState(false);
   const [campaignType, setCampaignType] = useState<CampaignType>("app_store");
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [screenshots, setScreenshots] = useState<UploadedScreenshot[]>([]);
@@ -58,6 +77,8 @@ export function useCampaignPipeline() {
   const [aiSocialStrategy, setAiSocialStrategy] = useState<SocialStrategyBrief | null>(null);
   const [autopilotStrategy, setAutopilotStrategy] = useState<AutopilotStrategyBrief | null>(null);
   const [aiAutopilotStrategy, setAiAutopilotStrategy] = useState<AutopilotStrategyBrief | null>(null);
+  const [autopilotCampaignId, setAutopilotCampaignId] = useState<string | null>(null);
+  const [postIdsByDay, setPostIdsByDay] = useState<Record<number, string>>({});
   const [generatedSlides, setGeneratedSlides] = useState<GeneratedSlide[]>([]);
   const [generatedSocialAssets, setGeneratedSocialAssets] = useState<GeneratedSocialAsset[]>([]);
   const [generatedCalendarPosts, setGeneratedCalendarPosts] = useState<GeneratedCalendarPost[]>([]);
@@ -66,8 +87,102 @@ export function useCampaignPipeline() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progressLabel, setProgressLabel] = useState("");
   const [partialPreviewUrl, setPartialPreviewUrl] = useState("");
+  const [regeneratingSlideNumber, setRegeneratingSlideNumber] = useState<number | null>(null);
   const [usageRefreshKey, setUsageRefreshKey] = useState(0);
   const generationAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const restored = await loadCampaignSession();
+      const urlPhase = readPhaseFromLocation(window.location.search);
+      const urlCampaign = readCampaignTypeFromLocation(window.location.search);
+
+      if (restored) {
+        const { session, screenshots: restoredScreenshots } = restored;
+        setCampaignType(urlCampaign ?? session.campaignType);
+        setProfile(session.profile);
+        setScreenshots(restoredScreenshots);
+        setStoreStrategy(session.storeStrategy);
+        setAiStoreStrategy(session.aiStoreStrategy);
+        setSocialStrategy(session.socialStrategy);
+        setAiSocialStrategy(session.aiSocialStrategy);
+        setAutopilotStrategy(session.autopilotStrategy);
+        setAiAutopilotStrategy(session.aiAutopilotStrategy);
+        setAutopilotCampaignId(session.autopilotCampaignId);
+        setPostIdsByDay(session.postIdsByDay);
+        setGeneratedSlides(session.generatedSlides);
+        setGeneratedSocialAssets(session.generatedSocialAssets);
+        setGeneratedCalendarPosts(session.generatedCalendarPosts);
+
+        const hasStrategy = Boolean(
+          session.storeStrategy || session.socialStrategy || session.autopilotStrategy,
+        );
+        const hasExport = Boolean(
+          session.generatedSlides.length ||
+            session.generatedSocialAssets.length ||
+            session.generatedCalendarPosts.length,
+        );
+
+        if (urlPhase === "export" && hasExport) {
+          setStep("gallery");
+        } else if (urlPhase === "strategy" && hasStrategy) {
+          setStep("strategy");
+        } else {
+          setStep(session.step);
+        }
+      } else if (urlPhase && urlPhase !== "setup") {
+        setStep(phaseToStep(urlPhase));
+        if (urlCampaign) setCampaignType(urlCampaign);
+      }
+
+      setSessionReady(true);
+    })();
+  }, []);
+
+  const sessionSnapshot = useMemo(
+    () =>
+      serializeCampaignSession({
+        step,
+        campaignType,
+        profile,
+        screenshots,
+        storeStrategy,
+        aiStoreStrategy,
+        socialStrategy,
+        aiSocialStrategy,
+        autopilotStrategy,
+        aiAutopilotStrategy,
+        autopilotCampaignId,
+        postIdsByDay,
+        generatedSlides,
+        generatedSocialAssets,
+        generatedCalendarPosts,
+      }),
+    [
+      step,
+      campaignType,
+      profile,
+      screenshots,
+      storeStrategy,
+      aiStoreStrategy,
+      socialStrategy,
+      aiSocialStrategy,
+      autopilotStrategy,
+      aiAutopilotStrategy,
+      autopilotCampaignId,
+      postIdsByDay,
+      generatedSlides,
+      generatedSocialAssets,
+      generatedCalendarPosts,
+    ],
+  );
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    saveCampaignSession(sessionSnapshot);
+    const next = buildCampaignPipelineUrl(stepToPhase(step), campaignType);
+    router.replace(next, { scroll: false });
+  }, [sessionReady, sessionSnapshot, step, campaignType, router]);
 
   const beginGeneration = () => {
     generationAbortRef.current?.abort();
@@ -127,13 +242,24 @@ export function useCampaignPipeline() {
     [screenshots],
   );
 
-  const appendFormBasics = (formData: FormData) => {
+  const appendProfileFields = (formData: FormData) => {
     if (!profile) return;
 
     formData.append("appName", profile.appName);
     formData.append("category", profile.category);
     formData.append("description", profile.description);
     formData.append("targetAudience", profile.targetAudience);
+  };
+
+  const appendSlideScreenshot = (formData: FormData, screenshotIndex: number | null) => {
+    screenshots.forEach((item) => formData.append("screenshots", item.file));
+    if (screenshotIndex === null || screenshotIndex < 0) return;
+    const shot = screenshots[screenshotIndex];
+    if (shot) formData.append("screenshot", shot.file);
+  };
+
+  const appendFormBasics = (formData: FormData) => {
+    appendProfileFields(formData);
     screenshots.forEach((item) => formData.append("screenshots", item.file));
   };
 
@@ -199,8 +325,15 @@ export function useCampaignPipeline() {
       } else {
         setAutopilotStrategy(result.strategy);
         setAiAutopilotStrategy(result.strategy);
+        if (result.campaignId) {
+          setAutopilotCampaignId(String(result.campaignId));
+        }
+        if (result.postIdsByDay && typeof result.postIdsByDay === "object") {
+          setPostIdsByDay(result.postIdsByDay as Record<number, string>);
+        }
       }
 
+      stripFormQueryParamsFromUrl();
       setStep("strategy");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Strategy generation failed.");
@@ -217,14 +350,16 @@ export function useCampaignPipeline() {
     lockedTypography: LockedTypography | undefined,
     styleReferenceDataUrl: string | undefined,
     onProgress: (message: string) => void,
-    onPartial: (dataUrl: string) => void,
+    onPartial: (dataUrl: string, stage?: "background" | "composite" | "polish") => void,
     options?: {
       regenerateMode?: StoreSlideRegenerateMode;
       existingBackgroundDataUrl?: string;
+      mockupColor?: string;
     },
   ) => {
     const formData = new FormData();
-    appendFormBasics(formData);
+    appendProfileFields(formData);
+    appendSlideScreenshot(formData, slide.screenshotIndex);
     formData.append("strategy", JSON.stringify(strategy));
     formData.append("slide", JSON.stringify(slide));
     formData.append("backgroundSceneCache", JSON.stringify(backgroundSceneCache));
@@ -232,7 +367,7 @@ export function useCampaignPipeline() {
       formData.append("lockedTypography", JSON.stringify(lockedTypography));
     }
     if (styleReferenceDataUrl) {
-      const raw = styleReferenceDataUrl.includes(",") ? styleReferenceDataUrl.split(",")[1] : styleReferenceDataUrl;
+      const raw = await dataUrlToBase64Payload(styleReferenceDataUrl);
       formData.append("styleReferenceBase64", raw);
     }
     if (options?.regenerateMode) {
@@ -244,6 +379,9 @@ export function useCampaignPipeline() {
         : options.existingBackgroundDataUrl;
       formData.append("existingBackgroundBase64", rawBg);
     }
+    if (options?.mockupColor) {
+      formData.append("mockupColor", options.mockupColor);
+    }
 
     const response = await fetch("/api/assets/generate-slide", { method: "POST", body: formData, signal });
     return consumeAssetStream(
@@ -251,7 +389,7 @@ export function useCampaignPipeline() {
       {
         onStatus: onProgress,
         onRevisedPrompt: () => onProgress(`Slide ${slide.slideNumber}: AI revised the background prompt...`),
-        onPartial,
+        onPartial: (dataUrl, _index, stage) => onPartial(dataUrl, stage),
       },
       signal,
     );
@@ -267,13 +405,14 @@ export function useCampaignPipeline() {
     setGeneratedSlides([]);
     setStep("gallery");
 
+    const slides: GeneratedSlide[] = [];
+    const backgroundSceneCache: Record<string, string> = {};
+    let lockedTypography: LockedTypography | undefined;
+    let styleReferenceDataUrl: string | undefined;
+
     try {
       const totalCalls = storeStrategy.slides.length * variantsPerSlide;
       assertCanGenerate(totalCalls);
-      const slides: GeneratedSlide[] = [];
-      const backgroundSceneCache: Record<string, string> = {};
-      let lockedTypography: LockedTypography | undefined;
-      let styleReferenceDataUrl: string | undefined;
 
       for (const slide of storeStrategy.slides) {
         if (signal.aborted) break;
@@ -365,7 +504,14 @@ export function useCampaignPipeline() {
       }
     } catch (error) {
       if (!isCancelledError(error)) {
-        setErrorMessage(error instanceof Error ? error.message : "Store set generation failed.");
+        const partial = slides.length;
+        const total = storeStrategy.slides.length;
+        const base = error instanceof Error ? error.message : "Store set generation failed.";
+        setErrorMessage(
+          partial > 0 && partial < total
+            ? `${base} (${partial} of ${total} slides were saved — retry generation for the rest.)`
+            : base,
+        );
       }
     } finally {
       generationAbortRef.current = null;
@@ -376,6 +522,7 @@ export function useCampaignPipeline() {
   const regenerateStoreSlide = async (
     slideNumber: number,
     mode: StoreSlideRegenerateMode = "full",
+    options?: StoreSlideRegenerateOptions,
   ) => {
     if (!profile || !storeStrategy) return;
 
@@ -384,9 +531,28 @@ export function useCampaignPipeline() {
 
     const existingSlide = generatedSlides.find((s) => s.slideNumber === slideNumber);
 
+    if (mode === "composite" && !existingSlide?.backgroundDataUrl) {
+      setErrorMessage(
+        "Saved background missing for this slide. Run a full generate or Redo background first.",
+      );
+      return;
+    }
+
     const signal = beginGeneration();
     setIsGenerating(true);
+    setRegeneratingSlideNumber(slideNumber);
     setErrorMessage("");
+    setPartialPreviewUrl("");
+
+    const applySlidePreview = (dataUrl: string, stage?: "background" | "composite" | "polish") => {
+      if (mode === "composite" && stage === "background") return;
+      setPartialPreviewUrl(dataUrl);
+      setGeneratedSlides((prev) =>
+        prev.map((item) =>
+          item.slideNumber === slideNumber ? { ...item, dataUrl, renderVersion: Date.now() } : item,
+        ),
+      );
+    };
 
     try {
       assertCanGenerate(1);
@@ -410,11 +576,15 @@ export function useCampaignPipeline() {
         resolveLockedTypographyForSlide(storeStrategy, slide),
         existingAnchor?.dataUrl,
         (message) => setProgressLabel(`Regenerating ${modeLabel} (slide ${slideNumber}): ${message}`),
-        (dataUrl) => setPartialPreviewUrl(dataUrl),
+        (dataUrl, stage) => applySlidePreview(dataUrl, stage),
         {
           regenerateMode: mode,
           existingBackgroundDataUrl:
             mode === "composite" ? existingSlide?.backgroundDataUrl : undefined,
+          mockupColor:
+            mode === "composite"
+              ? options?.mockupColor ?? existingSlide?.mockupColor
+              : undefined,
         },
       );
 
@@ -429,6 +599,9 @@ export function useCampaignPipeline() {
           ? result.backgroundDataUrl
           : existingSlide?.backgroundDataUrl;
 
+      const mockupColor =
+        mode === "composite" ? options?.mockupColor ?? existingSlide?.mockupColor : existingSlide?.mockupColor;
+
       setGeneratedSlides((prev) =>
         prev.map((item) =>
           item.slideNumber === slideNumber
@@ -437,6 +610,8 @@ export function useCampaignPipeline() {
                 dataUrl: resolved,
                 prompt: String(result.revisedPrompt || result.prompt || ""),
                 backgroundDataUrl,
+                mockupColor,
+                renderVersion: Date.now(),
               }
             : item,
         ),
@@ -450,6 +625,7 @@ export function useCampaignPipeline() {
     } finally {
       generationAbortRef.current = null;
       setIsGenerating(false);
+      setRegeneratingSlideNumber(null);
       setPartialPreviewUrl("");
     }
   };
@@ -494,7 +670,8 @@ export function useCampaignPipeline() {
         );
 
         const formData = new FormData();
-        appendFormBasics(formData);
+        appendProfileFields(formData);
+        appendSlideScreenshot(formData, asset.screenshotIndex);
         formData.append("strategy", JSON.stringify(socialStrategy));
         formData.append("asset", JSON.stringify(asset));
 
@@ -571,33 +748,85 @@ export function useCampaignPipeline() {
         if (signal.aborted) break;
 
         setPartialPreviewUrl("");
-        setProgressLabel(`Generating day ${post.day} of ${autopilotStrategy.posts.length}...`);
+        const formatLabel = post.format ?? "single";
+        setProgressLabel(
+          `Generating day ${post.day} (${formatLabel}) of ${autopilotStrategy.posts.length}...`,
+        );
 
         const formData = new FormData();
-        appendFormBasics(formData);
+        appendProfileFields(formData);
+        appendSlideScreenshot(formData, post.screenshotIndex);
         formData.append("strategy", JSON.stringify(autopilotStrategy));
         formData.append("post", JSON.stringify(post));
         formData.append("sessionBrandMemory", formatSessionBrandMemory(sessionEntries));
 
-        const response = await fetch("/api/assets/generate-autopilot-post", {
-          method: "POST",
-          body: formData,
-          signal,
-        });
-        const result = await consumeAssetStream(
-          response,
-          {
-            onStatus: (message) => setProgressLabel(`Day ${post.day}: ${message}`),
-            onRevisedPrompt: () => setProgressLabel(`Day ${post.day}: AI revised the background prompt...`),
-            onPartial: (dataUrl) => setPartialPreviewUrl(dataUrl),
-          },
-          signal,
-        );
+        let dataUrl = "";
+        let carouselDataUrls: string[] | undefined;
+        let videoDataUrl: string | undefined;
+        let prompt = "";
 
-        const imageSource = result.dataUrl || result.imageUrl;
-        if (!imageSource) {
-          throw new Error(`Day ${post.day} returned no image.`);
+        if (post.format === "carousel") {
+          const response = await fetch("/api/assets/generate-carousel", {
+            method: "POST",
+            body: formData,
+            signal,
+          });
+          const carouselResult = await response.json();
+          if (!response.ok) {
+            throw new Error(carouselResult.error || `Day ${post.day} carousel failed.`);
+          }
+          carouselDataUrls = (carouselResult.slides as Array<{ dataUrl: string }>).map((s) => s.dataUrl);
+          dataUrl = carouselDataUrls[0] ?? "";
+          prompt = "carousel";
+          bumpUsage(Math.max(1, carouselDataUrls.length));
+        } else {
+          const response = await fetch("/api/assets/generate-autopilot-post", {
+            method: "POST",
+            body: formData,
+            signal,
+          });
+          const result = await consumeAssetStream(
+            response,
+            {
+              onStatus: (message) => setProgressLabel(`Day ${post.day}: ${message}`),
+              onRevisedPrompt: () =>
+                setProgressLabel(`Day ${post.day}: AI revised the background prompt...`),
+              onPartial: (partial) => setPartialPreviewUrl(partial),
+            },
+            signal,
+          );
+
+          const imageSource = result.dataUrl || result.imageUrl;
+          if (!imageSource) {
+            throw new Error(`Day ${post.day} returned no image.`);
+          }
+          dataUrl = await resolveDataUrl(imageSource);
+          prompt = String(result.revisedPrompt || result.prompt || "");
+          bumpUsage(1);
+
+          if (post.format === "reels" && dataUrl) {
+            setProgressLabel(`Day ${post.day}: rendering video (${post.videoTemplate ?? "mood_teaser"})...`);
+            const videoForm = new FormData();
+            videoForm.append("stillBase64", dataUrl);
+            videoForm.append("headline", post.headline);
+            videoForm.append("template", post.videoTemplate ?? "mood_teaser");
+            videoForm.append("width", post.platform === "twitter" ? "1920" : "1080");
+            videoForm.append("height", post.platform === "instagram_story" ? "1920" : post.platform === "twitter" ? "1080" : "1080");
+            videoForm.append("postId", postIdsByDay[post.day] ?? `day-${post.day}`);
+
+            const videoRes = await fetch("/api/assets/generate-video", {
+              method: "POST",
+              body: videoForm,
+              signal,
+            });
+            const videoJson = await videoRes.json();
+            if (videoRes.ok && videoJson.dataUrl) {
+              videoDataUrl = String(videoJson.dataUrl);
+            }
+          }
         }
+
+        const postId = postIdsByDay[post.day];
 
         const generated: GeneratedCalendarPost = {
           day: post.day,
@@ -605,19 +834,43 @@ export function useCampaignPipeline() {
           scheduledTime: post.scheduledTime,
           platform: post.platform,
           role: post.role,
+          format: post.format,
+          campaignId: autopilotCampaignId ?? undefined,
+          postId,
           headline: post.headline,
           hook: post.hook,
           caption: post.caption,
           hashtags: post.hashtags,
           screenshotRationale: post.screenshotRationale,
-          dataUrl: await resolveDataUrl(imageSource),
-          prompt: String(result.revisedPrompt || result.prompt || ""),
+          dataUrl,
+          carouselDataUrls,
+          videoDataUrl,
+          prompt,
           selectedVariantId: post.selectedVariantId,
           usedScreenshot: post.screenshotUsage !== "none",
         };
 
+        if (autopilotCampaignId) {
+          if (carouselDataUrls?.length) {
+            for (let i = 0; i < carouselDataUrls.length; i++) {
+              await persistCampaignAsset(autopilotCampaignId, post.day, carouselDataUrls[i], {
+                kind: "image",
+                sortOrder: i,
+              });
+            }
+          } else {
+            await persistCampaignAsset(autopilotCampaignId, post.day, dataUrl, { kind: "image", sortOrder: 0 });
+            if (videoDataUrl) {
+              await persistCampaignAsset(autopilotCampaignId, post.day, videoDataUrl, {
+                kind: "video",
+                sortOrder: 1,
+                mimeType: "video/mp4",
+              });
+            }
+          }
+        }
+
         posts.push(generated);
-        bumpUsage(1);
         setPartialPreviewUrl("");
         sessionEntries.push({
           day: post.day,
@@ -663,6 +916,7 @@ export function useCampaignPipeline() {
   };
 
   const resetCampaign = () => {
+    clearCampaignSession();
     setStep("setup");
     setProfile(null);
     setScreenshots([]);
@@ -672,6 +926,8 @@ export function useCampaignPipeline() {
     setAiSocialStrategy(null);
     setAutopilotStrategy(null);
     setAiAutopilotStrategy(null);
+    setAutopilotCampaignId(null);
+    setPostIdsByDay({});
     setGeneratedSlides([]);
     setGeneratedSocialAssets([]);
     setGeneratedCalendarPosts([]);
@@ -681,15 +937,6 @@ export function useCampaignPipeline() {
 
   const goBackToSetup = () => {
     setStep("setup");
-    setStoreStrategy(null);
-    setAiStoreStrategy(null);
-    setSocialStrategy(null);
-    setAiSocialStrategy(null);
-    setAutopilotStrategy(null);
-    setAiAutopilotStrategy(null);
-    setGeneratedSlides([]);
-    setGeneratedSocialAssets([]);
-    setGeneratedCalendarPosts([]);
     setErrorMessage("");
   };
 
@@ -697,6 +944,18 @@ export function useCampaignPipeline() {
     if (campaignType === "app_store" && aiStoreStrategy) setStoreStrategy(aiStoreStrategy);
     if (campaignType === "social_launch" && aiSocialStrategy) setSocialStrategy(aiSocialStrategy);
     if (campaignType === "marketing_autopilot" && aiAutopilotStrategy) setAutopilotStrategy(aiAutopilotStrategy);
+  };
+
+  const goToStrategy = () => {
+    if (storeStrategy || socialStrategy || autopilotStrategy) {
+      setStep("strategy");
+    }
+  };
+
+  const goToGallery = () => {
+    if (generatedSlides.length || generatedSocialAssets.length || generatedCalendarPosts.length) {
+      setStep("gallery");
+    }
   };
 
   return {
@@ -717,12 +976,15 @@ export function useCampaignPipeline() {
     isGenerating,
     progressLabel,
     partialPreviewUrl,
+    regeneratingSlideNumber,
     usageRefreshKey,
     createStrategy,
     generateCampaign,
     cancelGeneration,
     resetCampaign,
     goBackToSetup,
+    goToStrategy,
+    goToGallery,
     setStoreStrategy,
     setSocialStrategy,
     setAutopilotStrategy,

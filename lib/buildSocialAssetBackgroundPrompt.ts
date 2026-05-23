@@ -1,5 +1,6 @@
 import type { AppProfile, SocialAssetPlan, SocialStrategyBrief } from "@/lib/campaignTypes";
 import { socialPlatformMeta } from "@/lib/campaignTypes";
+import { buildScreenshotColorHarmonyBlock } from "@/lib/applyScreenshotColorHarmony";
 import {
   backgroundPromptCompositionBlock,
   backgroundPromptExclusionsBlock,
@@ -20,7 +21,9 @@ export function buildSocialAssetBackgroundPrompt(
     "",
     backgroundPromptExclusionsBlock(),
     "",
-    backgroundPromptQualityBlock(),
+    backgroundPromptQualityBlock(strategy.colorProfile),
+    "",
+    buildScreenshotColorHarmonyBlock(strategy.colorProfile),
     "",
     "CREATIVE DIRECTION:",
     `- App: "${profile.appName}" (${profile.category})`,
@@ -28,6 +31,8 @@ export function buildSocialAssetBackgroundPrompt(
     `- Visual style: ${asset.visualStyle}`,
     `- Campaign theme: ${strategy.visualTheme}`,
     `- Positioning: ${strategy.positioning}`,
+    strategy.accentColor ? `- Accent color: ${strategy.accentColor}` : "",
+    strategy.brandColor ? `- Gradient secondary: ${strategy.brandColor}` : "",
     "",
     "Scene inspiration: lifestyle photography, cinematic gradient, or scroll-stopping branded environment.",
     "",

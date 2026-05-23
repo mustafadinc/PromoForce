@@ -22,6 +22,12 @@ export function savePerformanceRecord(record: PerformanceRecord) {
   const records = loadPerformanceRecords();
   const next = [record, ...records.filter((item) => item.id !== record.id)].slice(0, 100);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+
+  void fetch("/api/performance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  }).catch(() => undefined);
 }
 
 export function formatPerformanceForPrompt(appName: string) {

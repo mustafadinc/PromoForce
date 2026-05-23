@@ -3,6 +3,7 @@
 import { formatCalendarPostCopy } from "@/lib/buildAutopilotPostPrompt";
 import { platformLabel } from "@/lib/buildSocialAssetPrompt";
 import { PerformanceFeedback } from "@/components/PerformanceFeedback";
+import { ShareButton } from "@/components/ShareButton";
 import type { AutopilotStrategyBrief, GeneratedCalendarPost } from "@/lib/campaignTypes";
 import { socialPlatformMeta } from "@/lib/campaignTypes";
 import { buildCalendarExport } from "@/lib/scheduleUtils";
@@ -100,12 +101,27 @@ export function AutopilotCalendarGallery({
           return (
             <article key={post.day} className="calendar-post-card">
               <div className="calendar-post-image" style={{ aspectRatio: aspect }}>
-                <img src={post.dataUrl} alt={`Day ${post.day} ${platformLabel(post.platform)} post`} />
+                {post.videoDataUrl ? (
+                  <video src={post.videoDataUrl} controls muted playsInline className="calendar-post-video" />
+                ) : post.carouselDataUrls && post.carouselDataUrls.length > 1 ? (
+                  <div className="carousel-preview-strip">
+                    {post.carouselDataUrls.map((url, index) => (
+                      <img
+                        key={`${post.day}-${index}`}
+                        src={url}
+                        alt={`Day ${post.day} slide ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <img src={post.dataUrl} alt={`Day ${post.day} ${platformLabel(post.platform)} post`} />
+                )}
               </div>
               <div className="calendar-post-copy">
                 <div className="slide-plan-header">
                   <span className="slide-badge">Day {post.day}</span>
                   <span className="role-badge">{socialPlatformMeta[post.platform].label}</span>
+                  {post.format ? <span className="role-badge">{post.format}</span> : null}
                   <span className="format-badge">
                     {post.scheduledDate} · {post.scheduledTime}
                   </span>
@@ -121,6 +137,11 @@ export function AutopilotCalendarGallery({
                     Copy Caption
                   </button>
                 </div>
+                <ShareButton
+                  postId={post.postId}
+                  dataUrl={post.dataUrl}
+                  caption={formatCalendarPostCopy(post)}
+                />
                 <PerformanceFeedback
                   appName={appName}
                   itemId={`calendar-day-${post.day}`}

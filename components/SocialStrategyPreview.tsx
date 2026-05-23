@@ -1,10 +1,19 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { Copy } from "lucide-react";
+import { ScreenshotVisualPanel } from "@/components/ScreenshotVisualPanel";
 import { CopyVariantPicker } from "@/components/CopyVariantPicker";
-import type { CopyVariantId, SocialAssetPlan, SocialStrategyBrief, ScreenshotUsage } from "@/lib/campaignTypes";
+import { CopyToast } from "@/components/CopyToast";
+import { StrategyCarousel, type CarouselStep } from "@/components/StrategyCarousel";
+import { StrategyToolbar } from "@/components/StrategyToolbar";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
+import type { CopyVariantId, SocialAssetPlan, SocialStrategyBrief, SocialPlatform } from "@/lib/campaignTypes";
 import { socialPlatformMeta } from "@/lib/campaignTypes";
 import { selectCopyVariant, updateCopyField } from "@/lib/copyVariants";
-import { normalizeSocialAssetEdit, screenshotUsageOptions } from "@/lib/normalizeSocialAssetEdit";
+import { normalizeSocialAssetEdit, socialPlatformOptions } from "@/lib/normalizeSocialAssetEdit";
+import { coerceStrategyText } from "@/lib/strategyText";
+import { formatSocialPostCopy } from "@/lib/buildSocialAssetPrompt";
 
 type ScreenshotPreview = {
   index: number;
@@ -54,6 +63,21 @@ export function SocialStrategyPreview({
   onBack,
   onCancel,
 }: SocialStrategyPreviewProps) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
+
+  const steps = useMemo<CarouselStep[]>(() => {
+    if (!strategy) return [];
+    return [
+      { id: "brief", label: "Campaign brief", subtitle: "Positioning & theme" },
+      ...strategy.assets.map((asset) => ({
+        id: `asset-${asset.assetNumber}`,
+        label: socialPlatformMeta[asset.platform].label,
+        subtitle: asset.headline.slice(0, 48),
+      })),
+    ];
+  }, [strategy]);
+
   if (!strategy) {
     return (
       <section className="preview-panel">
@@ -66,6 +90,8 @@ export function SocialStrategyPreview({
   }
 
   const screenshotCount = screenshotPreviews.length;
+  const isBriefStep = stepIndex === 0;
+  const asset = isBriefStep ? null : strategy.assets[stepIndex - 1];
 
   const updateBriefField = (
     field: keyof Pick<SocialStrategyBrief, "positioning" | "primaryMessage" | "visualTheme">,
@@ -78,25 +104,17 @@ export function SocialStrategyPreview({
     onStrategyChange(updateAssetInStrategy(strategy, assetNumber, patch, screenshotCount));
   };
 
-  const updateAssetCopy = (
-    assetNumber: number,
-    field: "hook" | "caption" | "hashtags",
-    value: string,
-  ) => {
+  const updateAssetCopy = (assetNumber: number, field: "hook" | "caption" | "hashtags", value: string) => {
     onStrategyChange({
       ...strategy,
-      assets: strategy.assets.map((asset) =>
-        asset.assetNumber === assetNumber
+      assets: strategy.assets.map((entry) =>
+        entry.assetNumber === assetNumber
           ? normalizeSocialAssetEdit(
-              updateCopyField(
-                asset,
-                field,
-                field === "hashtags" ? value.split(/[\s,]+/) : value,
-              ),
+              updateCopyField(entry, field, field === "hashtags" ? value.split(/[\s,#]+/) : value),
               {},
               screenshotCount,
             )
-          : asset,
+          : entry,
       ),
     });
   };
@@ -104,210 +122,258 @@ export function SocialStrategyPreview({
   const selectVariant = (assetNumber: number, variantId: CopyVariantId) => {
     onStrategyChange({
       ...strategy,
-      assets: strategy.assets.map((asset) =>
-        asset.assetNumber === assetNumber ? selectCopyVariant(asset, variantId) : asset,
+      assets: strategy.assets.map((entry) =>
+        entry.assetNumber === assetNumber ? selectCopyVariant(entry, variantId) : entry,
       ),
     });
   };
 
   return (
-    <section className="preview-panel">
-      <div className="preview-toolbar">
-        <div>
-          <p className="eyebrow">AI Marketing Director</p>
-          <h2>Social Launch Plan</h2>
-        </div>
-        <div className="toolbar-actions">
-          {isGenerating ? (
-            <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
-              Cancel
+    <section className="preview-panel pf-strategy-panel pf-social-strategy">
+      <StrategyToolbar
+        eyebrow="Social Launch Pack"
+        title="Review one post at a time"
+        actions={
+          <>
+            {isGenerating ? (
+              <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            ) : null}
+            <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
+              Back
             </button>
-          ) : null}
-          <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
-            Back
-          </button>
-          {hasEdits ? (
-            <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
-              Reset to AI
+            {hasEdits ? (
+              <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
+                Reset to AI
+              </button>
+            ) : null}
+            <button className="primary-action compact-action" type="button" onClick={onGenerate} disabled={isGenerating}>
+              {isGenerating ? "Generating..." : "Generate Social Pack"}
             </button>
-          ) : null}
-          <button className="primary-action compact-action" type="button" onClick={onGenerate} disabled={isGenerating}>
-            {isGenerating ? "Generating..." : "Generate Social Pack"}
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <p className="strategy-note">
-        AI chose platforms, copy, screenshots, and hashtags. Edit anything before generating images and captions.
-      </p>
+      <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>
+        {isBriefStep ? (
+          <div className="pf-carousel-step pf-form-section-grid-single">
+            <label className="field">
+              <span>Positioning</span>
+              <textarea
+                rows={3}
+                value={coerceStrategyText(strategy.positioning)}
+                onChange={(event) => updateBriefField("positioning", event.target.value)}
+                disabled={isGenerating}
+              />
+            </label>
+            <label className="field">
+              <span>Primary message</span>
+              <textarea
+                rows={2}
+                value={coerceStrategyText(strategy.primaryMessage)}
+                onChange={(event) => updateBriefField("primaryMessage", event.target.value)}
+                disabled={isGenerating}
+              />
+            </label>
+            <label className="field">
+              <span>Visual theme</span>
+              <textarea
+                rows={3}
+                value={coerceStrategyText(strategy.visualTheme)}
+                onChange={(event) => updateBriefField("visualTheme", event.target.value)}
+                disabled={isGenerating}
+                placeholder="e.g. Colors: dark, calming · Fonts: clean sans-serif · Mood: premium minimal"
+              />
+            </label>
 
-      <div className="strategy-summary editable-summary">
-        <label className="strategy-card field">
-          <span>Positioning</span>
-          <textarea
-            rows={3}
-            value={strategy.positioning}
-            onChange={(event) => updateBriefField("positioning", event.target.value)}
-            disabled={isGenerating}
-          />
-        </label>
-        <label className="strategy-card field">
-          <span>Primary Message</span>
-          <textarea
-            rows={3}
-            value={strategy.primaryMessage}
-            onChange={(event) => updateBriefField("primaryMessage", event.target.value)}
-            disabled={isGenerating}
-          />
-        </label>
-        <label className="strategy-card field">
-          <span>Visual Theme</span>
-          <textarea
-            rows={3}
-            value={strategy.visualTheme}
-            onChange={(event) => updateBriefField("visualTheme", event.target.value)}
-            disabled={isGenerating}
-          />
-        </label>
-      </div>
-
-      <div className="slide-plan-list">
-        {strategy.assets.map((asset) => (
-          <article key={asset.assetNumber} className="slide-plan-card editable-slide-card">
-            <div className="slide-plan-header">
-              <span className="slide-badge">{socialPlatformMeta[asset.platform].label}</span>
+            <section className="pf-form-section pf-launch-formats">
+              <h4 className="pf-form-section-title">Launch pack formats</h4>
+              <p className="pf-form-section-hint">
+                Choose where each post goes — Feed post, Story, or X. Reels and carousel sequences are available in
+                Autopilot calendar mode.
+              </p>
+              <ul className="pf-launch-format-list">
+                {strategy.assets.map((entry, index) => (
+                  <li key={entry.assetNumber} className="pf-launch-format-row">
+                    <span className="pf-launch-format-index">Post {index + 1}</span>
+                    <label className="field pf-launch-format-field">
+                      <span className="sr-only">Platform for post {index + 1}</span>
+                      <select
+                        value={entry.platform}
+                        onChange={(event) =>
+                          updateAsset(entry.assetNumber, { platform: event.target.value as SocialPlatform })
+                        }
+                        disabled={isGenerating}
+                      >
+                        {socialPlatformOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="format-badge">
+                      {socialPlatformMeta[entry.platform].formatLabel}
+                    </span>
+                    <button
+                      type="button"
+                      className="pf-launch-format-jump"
+                      onClick={() => setStepIndex(index + 1)}
+                      disabled={isGenerating}
+                    >
+                      Edit post
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        ) : asset ? (
+          <div className="pf-carousel-step pf-step-split">
+            <div className="pf-step-form-column">
+            <div className="pf-carousel-step-meta">
               <span className="role-badge">{roleLabels[asset.role]}</span>
               <span className="format-badge">{socialPlatformMeta[asset.platform].formatLabel}</span>
-              <span className="ai-badge">AI proposed</span>
             </div>
 
-            <div className="editable-slide-grid">
+            <section className="pf-form-section pf-platform-section">
+              <h4 className="pf-form-section-title">Platform & format</h4>
               <label className="field">
-                <span>On-image headline</span>
-                <input
-                  type="text"
-                  value={asset.headline}
-                  onChange={(event) => updateAsset(asset.assetNumber, { headline: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field">
-                <span>On-image subheadline</span>
-                <textarea
-                  rows={2}
-                  value={asset.subheadline}
-                  onChange={(event) => updateAsset(asset.assetNumber, { subheadline: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <CopyVariantPicker
-                selectedVariantId={asset.selectedVariantId}
-                variantA={asset.copyVariants[0]}
-                variantB={asset.copyVariants[1]}
-                disabled={isGenerating}
-                onSelect={(variantId) => selectVariant(asset.assetNumber, variantId)}
-              />
-
-              <label className="field">
-                <span>Hook (first line)</span>
-                <input
-                  type="text"
-                  value={asset.hook}
-                  onChange={(event) => updateAssetCopy(asset.assetNumber, "hook", event.target.value)}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Caption</span>
-                <textarea
-                  rows={3}
-                  value={asset.caption}
-                  onChange={(event) => updateAssetCopy(asset.assetNumber, "caption", event.target.value)}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Hashtags (space or comma separated)</span>
-                <input
-                  type="text"
-                  value={asset.hashtags.map((tag) => `#${tag}`).join(" ")}
-                  onChange={(event) => updateAssetCopy(asset.assetNumber, "hashtags", event.target.value)}
-                  disabled={isGenerating}
-                />
-              </label>
-
-              <label className="field">
-                <span>Screenshot usage</span>
+                <span>Where should this post go?</span>
                 <select
-                  value={asset.screenshotUsage}
+                  value={asset.platform}
                   onChange={(event) =>
-                    updateAsset(asset.assetNumber, {
-                      screenshotUsage: event.target.value as ScreenshotUsage,
-                    })
+                    updateAsset(asset.assetNumber, { platform: event.target.value as SocialPlatform })
                   }
-                  disabled={isGenerating || screenshotCount === 0}
+                  disabled={isGenerating}
                 >
-                  {screenshotUsageOptions.map((option) => (
+                  {socialPlatformOptions.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {option.label} — {option.hint}
                     </option>
                   ))}
                 </select>
               </label>
 
-              {asset.screenshotUsage !== "none" && screenshotCount > 0 ? (
+              {screenshotCount > 0 && asset.screenshotUsage !== "none" ? (
                 <label className="field">
-                  <span>Which screen</span>
+                  <span>App screen for this post</span>
                   <select
                     value={asset.screenshotIndex ?? 0}
                     onChange={(event) =>
-                      updateAsset(asset.assetNumber, {
-                        screenshotIndex: Number(event.target.value),
-                      })
+                      updateAsset(asset.assetNumber, { screenshotIndex: Number(event.target.value) })
                     }
                     disabled={isGenerating}
                   >
-                    {screenshotPreviews.map((preview) => (
-                      <option key={preview.index} value={preview.index}>
-                        Screen {preview.index + 1}
+                    {screenshotPreviews.map((shot) => (
+                      <option key={shot.index} value={shot.index}>
+                        Screen {shot.index + 1}
                       </option>
                     ))}
                   </select>
                 </label>
-              ) : (
-                <div className="field screenshot-choice-preview">
-                  <span>Image input</span>
-                  <p className="text-only-note">Text-only creative. No screenshot sent to the model.</p>
-                </div>
-              )}
-
-              {asset.screenshotUsage !== "none" && asset.screenshotIndex !== null ? (
-                <div className="field screenshot-choice-preview">
-                  <span>Selected screen</span>
-                  <img
-                    src={screenshotPreviews[asset.screenshotIndex]?.previewUrl}
-                    alt={`Selected screen ${asset.screenshotIndex + 1}`}
-                  />
-                </div>
               ) : null}
+            </section>
 
-              <label className="field field-wide">
-                <span>Visual direction</span>
-                <textarea
-                  rows={2}
-                  value={asset.visualStyle}
-                  onChange={(event) => updateAsset(asset.assetNumber, { visualStyle: event.target.value })}
-                  disabled={isGenerating}
-                />
-              </label>
+            <section className="pf-form-section">
+              <h4 className="pf-form-section-title">On-image text</h4>
+              <div className="pf-form-section-grid pf-form-section-grid-single">
+                <label className="field">
+                  <span>Headline</span>
+                  <input
+                    type="text"
+                    value={asset.headline}
+                    onChange={(event) => updateAsset(asset.assetNumber, { headline: event.target.value })}
+                    disabled={isGenerating}
+                  />
+                </label>
+                <label className="field">
+                  <span>Subheadline</span>
+                  <input
+                    type="text"
+                    value={asset.subheadline}
+                    onChange={(event) => updateAsset(asset.assetNumber, { subheadline: event.target.value })}
+                    disabled={isGenerating}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className="pf-form-section">
+              <div className="pf-form-section-head">
+                <h4 className="pf-form-section-title">Post caption</h4>
+                <button
+                  type="button"
+                  className="pf-copy-link"
+                  onClick={() =>
+                    void copyText(
+                      formatSocialPostCopy({ hook: asset.hook, caption: asset.caption, hashtags: asset.hashtags }),
+                      "Full post copied",
+                    )
+                  }
+                >
+                  <Copy aria-hidden="true" />
+                  Copy full post
+                </button>
+              </div>
+              <CopyVariantPicker
+                selectedVariantId={asset.selectedVariantId}
+                variantA={asset.copyVariants[0]}
+                variantB={asset.copyVariants[1]}
+                disabled={isGenerating}
+                showPreview={false}
+                onSelect={(variantId) => selectVariant(asset.assetNumber, variantId)}
+              />
+              <div className="pf-form-section-grid pf-form-section-grid-single">
+                <label className="field">
+                  <span>Hook</span>
+                  <input
+                    type="text"
+                    value={asset.hook}
+                    onChange={(event) => updateAssetCopy(asset.assetNumber, "hook", event.target.value)}
+                    disabled={isGenerating}
+                  />
+                </label>
+                <label className="field">
+                  <span>Caption body</span>
+                  <textarea
+                    rows={4}
+                    value={asset.caption}
+                    onChange={(event) => updateAssetCopy(asset.assetNumber, "caption", event.target.value)}
+                    disabled={isGenerating}
+                    className="pf-caption-textarea"
+                  />
+                </label>
+                <label className="field">
+                  <span>Hashtags</span>
+                  <input
+                    type="text"
+                    value={asset.hashtags.map((tag) => (tag.startsWith("#") ? tag : `#${tag}`)).join(" ")}
+                    onChange={(event) => updateAssetCopy(asset.assetNumber, "hashtags", event.target.value)}
+                    disabled={isGenerating}
+                  />
+                </label>
+              </div>
+            </section>
             </div>
-          </article>
-        ))}
-      </div>
+
+            <ScreenshotVisualPanel
+              screenshots={screenshotPreviews}
+              screenshotUsage={asset.screenshotUsage}
+              screenshotIndex={asset.screenshotIndex}
+              platform={asset.platform}
+              visualStyle={asset.visualStyle}
+              isGenerating={isGenerating}
+              onUsageChange={(usage) => updateAsset(asset.assetNumber, { screenshotUsage: usage })}
+              onScreenshotSelect={(index) => updateAsset(asset.assetNumber, { screenshotIndex: index })}
+              onVisualStyleChange={(value) => updateAsset(asset.assetNumber, { visualStyle: value })}
+            />
+          </div>
+        ) : null}
+      </StrategyCarousel>
+
+      <CopyToast message={copyMessage} onDismiss={clearCopyMessage} />
     </section>
   );
 }

@@ -6,28 +6,30 @@ import {
   ASO_SVG_FONT_FAMILY,
 } from "@/lib/asoTypography";
 import {
-  APP_STORE_GENERATION_HEIGHT,
-  APP_STORE_GENERATION_WIDTH,
-  isAppStorePortraitAspect,
   parseImageSize,
 } from "@/lib/appStoreImageSizes";
+import { resizeScreenshotToScreenWidth } from "@/lib/fitScreenshotToMockupScreen";
 import {
-  DEVICE_BEZEL,
   DEVICE_FRAME_HEIGHT,
   DEVICE_FRAME_WIDTH,
-  DEVICE_SCREEN_CORNER_R,
+  computePhoneScreenLayout,
   getDeviceFrameBuffer,
 } from "@/lib/generateDeviceFrame";
 import { DEFAULT_ACCENT_COLOR } from "@/lib/storeCreativeDirector";
+import {
+  getCompositeLayoutProfile,
+  layoutScale,
+  type CompositeLayoutProfile,
+} from "@/lib/compositeLayoutProfile";
 
 export { parseImageSize };
 export type { LockedTypography };
 
 const MIN_TEXT_DEVICE_GAP = 48;
-const DEVICE_W_RATIO = 980 / 1290;
 /** Minimum gap above feature pills / canvas bottom so the full device chin stays visible. */
 const BOTTOM_SAFE_MARGIN = 64;
-const MIN_PHONE_W_RATIO = 0.5;
+/** Extra clearance so the bottom bezel + rounded chin are never clipped by the canvas edge. */
+const PHONE_CHIN_CLEARANCE = 28;
 const FRAME_ASPECT = DEVICE_FRAME_HEIGHT / DEVICE_FRAME_WIDTH;
 
 /** Bottom feature pills — reference px at 1280×2784. Equal-width row, short labels. */
@@ -43,9 +45,7 @@ const FEATURE_PILL = {
 } as const;
 
 function canvasScale(width: number, height: number) {
-  const wScale = width / APP_STORE_GENERATION_WIDTH;
-  const hScale = height / APP_STORE_GENERATION_HEIGHT;
-  return Math.max(wScale, hScale);
+  return layoutScale(width, height, getCompositeLayoutProfile(width, height));
 }
 
 function featurePillReserveHeight(width: number, height: number) {
@@ -72,6 +72,7 @@ type CompositeMarketingSlideInput = {
   showAppBranding?: boolean;
   layoutStyle?: SlideLayoutStyle;
   lockedTypography?: LockedTypography;
+  mockupColor?: string;
 };
 
 type PhoneLayout = {
@@ -95,113 +96,116 @@ function escapeXml(value: string) {
     .replace(/'/g, "&apos;");
 }
 
+function buildPhoneFrame(
+  phoneX: number,
+  phoneY: number,
+  phoneW: number,
+  phoneH: number,
+): PhoneLayout {
+  return computePhoneScreenLayout(phoneX, phoneY, phoneW, phoneH);
+}
+
 function getPhoneLayout(
   width: number,
   height: number,
   textBlockBottom: number,
-  reserveBottom = 0,
+  reserveBottom: number,
+  profile: CompositeLayoutProfile,
 ): PhoneLayout {
-  const appStoreAspect = isAppStorePortraitAspect(width, height);
-  const scale = width / APP_STORE_GENERATION_WIDTH;
+  const scale = layoutScale(width, height, profile);
 
-  if (appStoreAspect) {
-    const bottomMargin = Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), reserveBottom);
-    const topBound = textBlockBottom + MIN_TEXT_DEVICE_GAP;
-    const bottomBound = height - bottomMargin;
-    const availableH = Math.max(0, bottomBound - topBound);
+  if (profile.format === "landscape") {
+    const sideMargin = Math.round(28 * scale);
+    const maxPhoneH = height - sideMargin * 2;
+    let phoneW = Math.round(width * profile.phoneWidthRatio);
+    let phoneH = Math.round(phoneW * FRAME_ASPECT);
 
-    const preferredPhoneW = Math.round(width * DEVICE_W_RATIO);
-    const maxPhoneWFromHeight =
-      availableH > 0 ? Math.round(availableH / FRAME_ASPECT) : preferredPhoneW;
-    const minPhoneW = Math.round(width * MIN_PHONE_W_RATIO);
-
-    let phoneW = Math.min(preferredPhoneW, maxPhoneWFromHeight);
-    if (phoneW < minPhoneW && maxPhoneWFromHeight >= minPhoneW) {
-      phoneW = minPhoneW;
+    if (phoneH > maxPhoneH) {
+      phoneH = maxPhoneH;
+      phoneW = Math.round(phoneH / FRAME_ASPECT);
     }
-    phoneW = Math.max(Math.round(width * 0.42), phoneW);
 
-    const frameScale = phoneW / DEVICE_FRAME_WIDTH;
-    const phoneH = Math.round(DEVICE_FRAME_HEIGHT * frameScale);
-    const phoneY = Math.max(topBound, bottomBound - phoneH);
-    const phoneX = Math.round((width - phoneW) / 2);
-    const bezel = Math.max(16, Math.round(DEVICE_BEZEL * frameScale));
-    const screenX = phoneX + bezel;
-    const screenY = phoneY + bezel;
-    const screenW = phoneW - bezel * 2;
-    const screenH = phoneH - bezel * 2;
-    const screenRadius = Math.round(DEVICE_SCREEN_CORNER_R * frameScale);
+    phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio), phoneW);
+    phoneH = Math.round(phoneW * FRAME_ASPECT);
 
-    return {
-      phoneX,
-      phoneY,
-      phoneW,
-      phoneH,
-      screenX,
-      screenY,
-      screenW,
-      screenH,
-      screenRadius,
-    };
+    const phoneX = width - sideMargin - phoneW;
+    const phoneY = Math.round((height - phoneH) / 2);
+    return buildPhoneFrame(phoneX, phoneY, phoneW, phoneH);
   }
 
-  const phoneW = Math.round(width * 0.44);
-  const phoneH = Math.round(phoneW * FRAME_ASPECT);
-  const bottomMargin = Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), reserveBottom);
+  const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
+  const bottomMargin =
+    Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), reserveBottom) + chinClearance;
   const topBound = textBlockBottom + MIN_TEXT_DEVICE_GAP;
   const bottomBound = height - bottomMargin;
+  const availableH = Math.max(0, bottomBound - topBound);
+
+  const preferredPhoneW = Math.round(width * profile.phoneWidthRatio);
+  const minPhoneW = Math.round(width * profile.minPhoneWidthRatio);
+  const maxPhoneWFromHeight =
+    availableH > 0 ? Math.floor(availableH / FRAME_ASPECT) : preferredPhoneW;
+
+  let phoneW = Math.min(preferredPhoneW, maxPhoneWFromHeight);
+  if (phoneW < minPhoneW && maxPhoneWFromHeight >= minPhoneW) {
+    phoneW = minPhoneW;
+  }
+  phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio * 0.92), phoneW);
+  if (maxPhoneWFromHeight > 0) {
+    phoneW = Math.min(phoneW, maxPhoneWFromHeight);
+  }
+
+  let phoneH = Math.floor(phoneW * FRAME_ASPECT);
+  if (availableH > 0 && phoneH > availableH) {
+    phoneH = availableH;
+    phoneW = Math.floor(phoneH / FRAME_ASPECT);
+  }
+
   const phoneY = Math.max(topBound, bottomBound - phoneH);
   const phoneX = Math.round((width - phoneW) / 2);
-  const bezel = Math.max(14, Math.round(phoneW * 0.028));
-
-  return {
-    phoneX,
-    phoneY,
-    phoneW,
-    phoneH,
-    screenX: phoneX + bezel,
-    screenY: phoneY + bezel,
-    screenW: phoneW - bezel * 2,
-    screenH: phoneH - bezel * 2,
-    screenRadius: Math.round((phoneW - bezel * 2) * 0.112),
-  };
+  return buildPhoneFrame(phoneX, phoneY, phoneW, phoneH);
 }
 
-async function roundImageCorners(input: Buffer, w: number, h: number, radius: number) {
-  const mask = Buffer.from(
-    `<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="${radius}" ry="${radius}" fill="#fff"/></svg>`,
-  );
-  return sharp(input)
-    .ensureAlpha()
-    .composite([{ input: mask, blend: "dest-in" }])
-    .png()
-    .toBuffer();
+async function fitScreenshotToScreen(screenshot: Buffer, layout: PhoneLayout) {
+  const rotated = await sharp(screenshot).rotate().png().toBuffer();
+  return resizeScreenshotToScreenWidth(rotated, layout.screenW, layout.screenH);
+}
+
+function renderGradientLine(
+  line: string,
+  anchorX: number,
+  y: number,
+  fontSize: number,
+  fontWeight: number,
+  textAnchor: "middle" | "start",
+): string {
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="url(#accentGrad)"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
 }
 
 function renderAccentInLine(
   line: string,
   accentPhrase: string,
-  centerX: number,
+  anchorX: number,
   y: number,
   fontSize: number,
   fontWeight: number,
+  textAnchor: "middle" | "start",
 ): string {
   const trimmedAccent = accentPhrase.trim();
   if (!trimmedAccent) {
-    return `<text filter="url(#textShadow)" text-anchor="middle" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${centerX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const idx = line.toLowerCase().indexOf(trimmedAccent.toLowerCase());
   if (idx === -1) {
-    return `<text filter="url(#textShadow)" text-anchor="middle" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${centerX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const before = line.slice(0, idx);
   const accent = line.slice(idx, idx + trimmedAccent.length);
   const after = line.slice(idx + trimmedAccent.length);
 
-  return `<text filter="url(#textShadow)" text-anchor="middle" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}">
-    <tspan x="${centerX}" y="${y}" fill="#ffffff">${escapeXml(before)}</tspan><tspan fill="url(#accentGrad)">${escapeXml(accent)}</tspan><tspan fill="#ffffff">${escapeXml(after)}</tspan>
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}">
+    <tspan x="${anchorX}" y="${y}" fill="#ffffff">${escapeXml(before)}</tspan><tspan fill="url(#accentGrad)">${escapeXml(accent)}</tspan><tspan fill="#ffffff">${escapeXml(after)}</tspan>
   </text>`;
 }
 
@@ -343,10 +347,10 @@ async function buildTextOverlaySvg(input: {
     lockedTypography,
   } = input;
 
-  const scale = width / APP_STORE_GENERATION_WIDTH;
-  const centerX = width / 2;
+  const scale = canvasScale(width, height);
+  const profile = getCompositeLayoutProfile(width, height);
   const fontFaceDef = await getAsoFontFaceSvgDef();
-  const useBranding = Boolean(showAppBranding && appName && !isCta);
+  const useBranding = Boolean(showAppBranding && appName && !isCta && profile.format === "app_store");
   const layout = computeAsoTextLayout(
     headline,
     subheadline,
@@ -360,6 +364,7 @@ async function buildTextOverlaySvg(input: {
   );
 
   const usePills =
+    profile.showFeaturePills &&
     (layoutStyle === "hero_branded" || layoutStyle === "feature_pills") &&
     featureHighlights.length >= 2 &&
     !isCta;
@@ -368,19 +373,34 @@ async function buildTextOverlaySvg(input: {
     ? buildFeaturePillsSvg(featureHighlights, accentColor, width, height)
     : { defs: "", markup: "" };
 
+  const anchorX = layout.textAnchorX;
+  const textAnchor = layout.textAnchor;
   let y = layout.textTopY;
 
   const verbElements = layout.verbLines
     .map((line) => {
-      const el = renderAccentInLine(line, headlineAccent, centerX, y, layout.verbSize, 900);
+      const el = renderGradientLine(line, anchorX, y, layout.verbSize, 900, textAnchor);
       y += Math.round(layout.verbSize * 1.05);
       return el;
     })
     .join("");
 
+  const descriptorAccent =
+    headlineAccent.trim() ||
+    layout.descriptorLines[0]?.split(/\s+/).slice(-2).join(" ") ||
+    "";
+
   const descriptorElements = layout.descriptorLines
     .map((line) => {
-      const el = renderAccentInLine(line, headlineAccent, centerX, y, layout.descriptorSize, 900);
+      const el = renderAccentInLine(
+        line,
+        descriptorAccent,
+        anchorX,
+        y,
+        layout.descriptorSize,
+        900,
+        textAnchor,
+      );
       y += Math.round(layout.descriptorSize * 1.15);
       return el;
     })
@@ -395,7 +415,7 @@ async function buildTextOverlaySvg(input: {
   const subTspans = layout.subLines
     .map((line, index) => {
       const lineY = y + index * Math.round(layout.subSize * 1.28);
-      return `<tspan x="${centerX}" y="${lineY}">${escapeXml(line)}</tspan>`;
+      return `<tspan x="${anchorX}" y="${lineY}">${escapeXml(line)}</tspan>`;
     })
     .join("");
 
@@ -421,7 +441,7 @@ async function buildTextOverlaySvg(input: {
   ${useBranding ? buildBrandingBarSvg(appName!, accentColor, width, scale) : ""}
   ${verbElements}
   ${descriptorElements}
-  <text filter="url(#textShadow)" text-anchor="middle" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="700" font-size="${layout.subSize}" fill="#f0f3f8">${subTspans}</text>
+  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="700" font-size="${layout.subSize}" fill="${accentColor}" opacity="0.92">${subTspans}</text>
   ${featurePills.markup}
 </svg>`),
     textBlockBottom: layout.textBlockBottom,
@@ -444,51 +464,20 @@ function buildPhoneGlowSvg(layout: PhoneLayout, width: number, height: number, a
 </svg>`);
 }
 
-async function fitScreenshotToScreen(screenshot: Buffer, layout: PhoneLayout) {
-  const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const targetW = layout.screenW;
-  const targetH = layout.screenH;
-
-  const widthScaled = await sharp(screenshotBuffer).resize({ width: targetW }).png().toBuffer();
-  const scaledMeta = await sharp(widthScaled).metadata();
-  const scaledH = scaledMeta.height ?? targetH;
-
-  let fitted: Buffer;
-  if (scaledH >= targetH) {
-    fitted = await sharp(widthScaled)
-      .extract({ left: 0, top: 0, width: targetW, height: targetH })
-      .png()
-      .toBuffer();
-  } else {
-    fitted = await sharp(widthScaled)
-      .extend({
-        top: 0,
-        bottom: targetH - scaledH,
-        left: 0,
-        right: 0,
-        background: { r: 8, g: 8, b: 10, alpha: 1 },
-      })
-      .png()
-      .toBuffer();
-  }
-
-  return roundImageCorners(fitted, targetW, targetH, layout.screenRadius);
-}
-
 async function compositeDeviceFrame(
   base: Buffer,
   layout: PhoneLayout,
-  roundedScreen: Buffer,
+  screenBuffer: Buffer,
   width: number,
   height: number,
   accentColor: string,
+  mockupColor?: string,
 ) {
-  const frameBuffer = await getDeviceFrameBuffer();
+  const frameBuffer = await getDeviceFrameBuffer(mockupColor);
   const frameW = layout.phoneW;
-  const frameScale = frameW / DEVICE_FRAME_WIDTH;
-  const frameH = Math.round(DEVICE_FRAME_HEIGHT * frameScale);
+  const frameH = layout.phoneH;
 
-  const resizedFrame = await sharp(frameBuffer).resize(frameW, frameH).png().toBuffer();
+  const resizedFrame = await sharp(frameBuffer).resize(frameW, frameH, { fit: "fill" }).png().toBuffer();
 
   const phoneGlow = await sharp(buildPhoneGlowSvg(layout, width, height, accentColor)).png().toBuffer();
 
@@ -500,7 +489,7 @@ async function compositeDeviceFrame(
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
   })
-    .composite([{ input: roundedScreen, top: layout.screenY, left: layout.screenX }])
+    .composite([{ input: screenBuffer, top: layout.screenY, left: layout.screenX }])
     .png()
     .toBuffer();
 
@@ -531,8 +520,11 @@ export async function compositeMarketingSlide({
   showAppBranding = false,
   layoutStyle,
   lockedTypography,
+  mockupColor,
 }: CompositeMarketingSlideInput): Promise<Buffer> {
+  const profile = getCompositeLayoutProfile(width, height);
   const hasPills =
+    profile.showFeaturePills &&
     (layoutStyle === "hero_branded" || layoutStyle === "feature_pills") &&
     featureHighlights.length >= 2 &&
     !isCta &&
@@ -571,9 +563,17 @@ export async function compositeMarketingSlide({
   }
 
   const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom);
-  const roundedScreen = await fitScreenshotToScreen(screenshotBuffer, layout);
-  const withDevice = await compositeDeviceFrame(base, layout, roundedScreen, width, height, accentColor);
+  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile);
+  const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
+  const withDevice = await compositeDeviceFrame(
+    base,
+    layout,
+    screenBuffer,
+    width,
+    height,
+    accentColor,
+    mockupColor,
+  );
 
   return sharp(withDevice)
     .composite([{ input: textOverlay, top: 0, left: 0 }])

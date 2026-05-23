@@ -4,29 +4,22 @@ import {
   APP_STORE_GENERATION_WIDTH,
 } from "@/lib/appStoreImageSizes";
 import {
+  getCompositeLayoutProfile,
+  layoutScale,
+  type CompositeLayoutProfile,
+} from "@/lib/compositeLayoutProfile";
+import {
   fitFontSize,
   splitHeadlineParts,
-  TEXT_SAFE_WIDTH_RATIO,
   wrapTextToMaxWidth,
 } from "@/lib/asoTypography";
 
-const VERB_SIZE_MAX = 148;
-const VERB_SIZE_MIN = 88;
-const VERB_SIZE_MAX_CTA = 120;
-const VERB_SIZE_MIN_CTA = 68;
-const DESCRIPTOR_SIZE = 72;
 /** Bottom edge of logo row (reference px @ 1280w). */
 const BRANDING_ZONE_BOTTOM = 112;
 const HEADLINE_GAP_BELOW_BRAND = 36;
 const HEADLINE_TOP_BASELINE = 156;
-/** Cap height ≈ 82% of font size for uppercase SVG baselines. */
 const CAP_HEIGHT_RATIO = 0.82;
-/** Subheadline ≈ 52–58% of descriptor size for readable hierarchy. */
 const SUB_SIZE_DESCRIPTOR_RATIO = 0.56;
-const SUB_SIZE_MIN = 40;
-const SUB_SIZE_MAX = 52;
-/** Keep headline band in upper ~38% so the mockup has room. */
-const MAX_TEXT_BLOCK_HEIGHT_RATIO = 0.38;
 
 export type BrandingMetrics = {
   textBaselineY: number;
@@ -43,10 +36,15 @@ export function getBrandingMetrics(scale: number): BrandingMetrics {
   return { textBaselineY, iconSize, fontSize, zoneBottom };
 }
 
-function computeSubSize(descriptorSize: number, scale: number, isCta: boolean) {
+function computeSubSize(
+  descriptorSize: number,
+  scale: number,
+  isCta: boolean,
+  profile: CompositeLayoutProfile,
+) {
   const fromDescriptor = Math.round(descriptorSize * SUB_SIZE_DESCRIPTOR_RATIO);
-  const cap = Math.round((isCta ? SUB_SIZE_MAX : SUB_SIZE_MAX) * scale);
-  const floor = Math.round(SUB_SIZE_MIN * scale);
+  const cap = Math.round((isCta ? profile.subSizeMax : profile.subSizeMax) * scale);
+  const floor = Math.round(profile.subSizeMin * scale);
   return Math.min(cap, Math.max(floor, fromDescriptor));
 }
 
@@ -56,9 +54,10 @@ function computeFirstLineBaseline(
   reserveTopForBranding: boolean,
   isCta: boolean,
   height: number,
+  profile: CompositeLayoutProfile,
 ): number {
   if (isCta) {
-    return Math.round(height * 0.14);
+    return Math.round(height * (profile.format === "landscape" ? 0.12 : 0.14));
   }
   if (reserveTopForBranding) {
     return (
@@ -66,6 +65,15 @@ function computeFirstLineBaseline(
       Math.round(HEADLINE_GAP_BELOW_BRAND * scale) +
       Math.round(verbSize * CAP_HEIGHT_RATIO)
     );
+  }
+  if (profile.format === "square") {
+    return Math.round(height * 0.055) + Math.round(verbSize * CAP_HEIGHT_RATIO);
+  }
+  if (profile.format === "portrait_social") {
+    return Math.round(height * 0.06) + Math.round(verbSize * CAP_HEIGHT_RATIO);
+  }
+  if (profile.format === "landscape") {
+    return Math.round(height * 0.1) + Math.round(verbSize * CAP_HEIGHT_RATIO);
   }
   return Math.round(HEADLINE_TOP_BASELINE * scale) + Math.round(verbSize * CAP_HEIGHT_RATIO);
 }
@@ -80,15 +88,18 @@ export type AsoTextLayout = {
   textTopY: number;
   textBlockBottom: number;
   fadeHeight: number;
+  textAnchorX: number;
+  textAnchor: "middle" | "start";
 };
 
-function estimateDescriptorOverflow(descriptor: string, maxWidth: number, fontSize: number): boolean {
-  return descriptor.length * fontSize * 0.64 > maxWidth;
-}
-
-function estimateSubMax(subheadline: string, maxWidth: number, startSize: number): number {
+function estimateSubMax(
+  subheadline: string,
+  maxWidth: number,
+  startSize: number,
+  profile: CompositeLayoutProfile,
+) {
   let size = startSize;
-  const min = Math.round(22 * (maxWidth / (APP_STORE_GENERATION_WIDTH * TEXT_SAFE_WIDTH_RATIO)));
+  const min = Math.round(profile.subSizeMin * 0.55);
   while (size >= min) {
     const lines = wrapTextToMaxWidth(subheadline, maxWidth, size, 2);
     const longest = Math.max(...lines.map((l) => l.length * size * 0.64), 0);
@@ -109,8 +120,12 @@ export function computeAsoTextLayout(
   lockedTypography?: LockedTypography,
   reserveTopForBranding = false,
 ): AsoTextLayout {
-  const scale = width / APP_STORE_GENERATION_WIDTH;
-  const safeWidth = width * TEXT_SAFE_WIDTH_RATIO;
+  const profile = getCompositeLayoutProfile(width, height);
+  const scale = layoutScale(width, height, profile);
+  const safeWidth = width * profile.textSafeWidthRatio;
+  const textAnchorX =
+    profile.textAlign === "left" ? Math.round(width * 0.06) : Math.round(width / 2);
+  const textAnchor = profile.textAlign === "left" ? "start" : "middle";
   const { verb, descriptor } = splitHeadlineParts(headline, headlineVerb, headlineDescriptor);
 
   let verbSize: number;
@@ -122,16 +137,27 @@ export function computeAsoTextLayout(
     descriptorSize = lockedTypography.descriptorSize;
     subSize = lockedTypography.subSize;
   } else {
-    const verbMax = Math.round((isCta ? VERB_SIZE_MAX_CTA : VERB_SIZE_MAX) * scale);
-    const verbMin = Math.round((isCta ? VERB_SIZE_MIN_CTA : VERB_SIZE_MIN) * scale);
+    const verbMax = Math.round(
+      (isCta ? profile.verbSizeMaxCta : profile.verbSizeMax) * scale,
+    );
+    const verbMin = Math.round(
+      (isCta ? profile.verbSizeMinCta : profile.verbSizeMin) * scale,
+    );
     verbSize = Math.round(fitFontSize(verb, safeWidth, verbMax, verbMin));
-    descriptorSize = Math.round(DESCRIPTOR_SIZE * scale);
-    if (descriptor && estimateDescriptorOverflow(descriptor, safeWidth, descriptorSize)) {
-      descriptorSize = fitFontSize(descriptor, safeWidth, descriptorSize, Math.round(52 * scale));
+    descriptorSize = Math.round(profile.descriptorSize * scale);
+    if (descriptor && descriptor.length * descriptorSize * 0.64 > safeWidth) {
+      descriptorSize = fitFontSize(
+        descriptor,
+        safeWidth,
+        descriptorSize,
+        Math.round(profile.descriptorSize * 0.72 * scale),
+      );
     }
-    subSize = computeSubSize(descriptorSize, scale, isCta);
-    const subMax = estimateSubMax(subheadline, safeWidth, subSize);
-    if (subMax < subSize) subSize = Math.max(Math.round(SUB_SIZE_MIN * scale), subMax);
+    subSize = computeSubSize(descriptorSize, scale, isCta, profile);
+    const subMax = estimateSubMax(subheadline, safeWidth, subSize, profile);
+    if (subMax < subSize) {
+      subSize = Math.max(Math.round(profile.subSizeMin * scale), subMax);
+    }
   }
 
   const verbLines = verb ? [verb] : [];
@@ -143,7 +169,14 @@ export function computeAsoTextLayout(
     ? wrapTextToMaxWidth(subheadline, safeWidth * 0.95, subSize, 2)
     : [];
 
-  const textTopY = computeFirstLineBaseline(scale, verbSize, reserveTopForBranding, isCta, height);
+  const textTopY = computeFirstLineBaseline(
+    scale,
+    verbSize,
+    reserveTopForBranding,
+    isCta,
+    height,
+    profile,
+  );
   const verbGap = Math.round(verbSize * 1.02);
   const descGap = Math.round(descriptorSize * 1.12);
   const subGap = Math.round(subSize * 1.28);
@@ -158,7 +191,7 @@ export function computeAsoTextLayout(
     y += Math.round(subSize * 0.55) + subLines.length * subGap;
   }
 
-  const maxTextBottom = Math.round(height * MAX_TEXT_BLOCK_HEIGHT_RATIO);
+  const maxTextBottom = Math.round(height * profile.maxTextBlockHeightRatio);
   const textBlockBottom = Math.min(y, maxTextBottom);
 
   return {
@@ -170,7 +203,11 @@ export function computeAsoTextLayout(
     subLines,
     textTopY,
     textBlockBottom,
-    fadeHeight: Math.round(height * (isCta ? 0.46 : 0.28)),
+    fadeHeight: Math.round(
+      height * (isCta ? profile.fadeHeightRatioCta : profile.fadeHeightRatio),
+    ),
+    textAnchorX,
+    textAnchor,
   };
 }
 

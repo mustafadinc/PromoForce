@@ -1,12 +1,15 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { ScreenshotVisualPanel } from "@/components/ScreenshotVisualPanel";
 import { CopyVariantPicker } from "@/components/CopyVariantPicker";
+import { StrategyCarousel, type CarouselStep } from "@/components/StrategyCarousel";
+import { StrategyToolbar } from "@/components/StrategyToolbar";
 import type {
   AutopilotPostRole,
   AutopilotStrategyBrief,
   CalendarPostPlan,
   CopyVariantId,
-  ScreenshotUsage,
   SocialPlatform,
 } from "@/lib/campaignTypes";
 import { socialPlatformMeta } from "@/lib/campaignTypes";
@@ -15,9 +18,10 @@ import {
   autopilotRoleOptions,
   normalizeCalendarPostEdit,
   platformOptions,
-  screenshotUsageOptions,
+  postFormatOptions,
 } from "@/lib/normalizeCalendarPostEdit";
 import { formatScheduledLabel } from "@/lib/scheduleUtils";
+import { coerceStrategyText } from "@/lib/strategyText";
 
 type ScreenshotPreview = {
   index: number;
@@ -61,6 +65,21 @@ export function AutopilotStrategyPreview({
   onBack,
   onCancel,
 }: AutopilotStrategyPreviewProps) {
+  const screenshotCount = screenshotPreviews.length;
+  const [stepIndex, setStepIndex] = useState(0);
+
+  const steps = useMemo<CarouselStep[]>(() => {
+    if (!strategy) return [];
+    return [
+      { id: "brief", label: "Calendar settings", subtitle: `${strategy.duration}-day plan` },
+      ...strategy.posts.map((post) => ({
+        id: `day-${post.day}`,
+        label: `Day ${post.day}`,
+        subtitle: `${socialPlatformMeta[post.platform].label} · ${post.headline.slice(0, 36)}`,
+      })),
+    ];
+  }, [strategy]);
+
   if (!strategy) {
     return (
       <section className="preview-panel">
@@ -72,9 +91,10 @@ export function AutopilotStrategyPreview({
     );
   }
 
-  const screenshotCount = screenshotPreviews.length;
   const screenshotDays = strategy.posts.filter((post) => post.screenshotUsage !== "none").length;
   const textOnlyDays = strategy.posts.length - screenshotDays;
+  const isBriefStep = stepIndex === 0;
+  const post = isBriefStep ? null : strategy.posts[stepIndex - 1];
 
   const updatePost = (day: number, patch: Partial<CalendarPostPlan>) => {
     onStrategyChange(updatePostInStrategy(strategy, day, patch, screenshotCount));
@@ -83,14 +103,14 @@ export function AutopilotStrategyPreview({
   const updatePostCopy = (day: number, field: "hook" | "caption" | "hashtags", value: string) => {
     onStrategyChange({
       ...strategy,
-      posts: strategy.posts.map((post) =>
-        post.day === day
+      posts: strategy.posts.map((entry) =>
+        entry.day === day
           ? normalizeCalendarPostEdit(
-              updateCopyField(post, field, field === "hashtags" ? value.split(/[\s,]+/) : value),
+              updateCopyField(entry, field, field === "hashtags" ? value.split(/[\s,]+/) : value),
               {},
               screenshotCount,
             )
-          : post,
+          : entry,
       ),
     });
   };
@@ -98,82 +118,97 @@ export function AutopilotStrategyPreview({
   const selectVariant = (day: number, variantId: CopyVariantId) => {
     onStrategyChange({
       ...strategy,
-      posts: strategy.posts.map((post) => (post.day === day ? selectCopyVariant(post, variantId) : post)),
+      posts: strategy.posts.map((entry) => (entry.day === day ? selectCopyVariant(entry, variantId) : entry)),
     });
   };
 
   return (
-    <section className="preview-panel autopilot-preview">
-      <div className="preview-toolbar">
-        <div>
-          <p className="eyebrow">AI Marketing Director</p>
-          <h2>{strategy.duration}-Day Calendar</h2>
-        </div>
-        <div className="toolbar-actions">
-          {isGenerating ? (
-            <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
-              Cancel
+    <section className="preview-panel pf-strategy-panel pf-autopilot-strategy">
+      <StrategyToolbar
+        eyebrow="AI Marketing Director"
+        title={`Review one day at a time · ${strategy.duration}-day calendar`}
+        actions={
+          <>
+            {isGenerating ? (
+              <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
+                Cancel
+              </button>
+            ) : null}
+            <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
+              Back
             </button>
-          ) : null}
-          <button className="secondary-action" type="button" onClick={onBack} disabled={isGenerating}>
-            Back
-          </button>
-          {hasEdits ? (
-            <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
-              Reset to AI
+            {hasEdits ? (
+              <button className="secondary-action" type="button" onClick={onResetStrategy} disabled={isGenerating}>
+                Reset to AI
+              </button>
+            ) : null}
+            <button className="primary-action compact-action" type="button" onClick={onGenerate} disabled={isGenerating}>
+              {isGenerating ? "Generating..." : `Generate ${strategy.duration} Posts`}
             </button>
-          ) : null}
-          <button className="primary-action compact-action" type="button" onClick={onGenerate} disabled={isGenerating}>
-            {isGenerating ? "Generating..." : `Generate ${strategy.duration} Posts`}
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      <p className="strategy-note">
-        AI planned {strategy.duration} days starting {strategy.startDate}. {screenshotDays} posts use screenshots,{" "}
-        {textOnlyDays} are text-only. Edit any day before generating.
-      </p>
+      <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>
+        {isBriefStep ? (
+          <div className="pf-carousel-step">
+            <p className="strategy-note">
+              AI planned {strategy.duration} days starting {strategy.startDate}. {screenshotDays} posts use
+              screenshots, {textOnlyDays} are text-only. Use next to edit each day.
+            </p>
 
-      <div className="strategy-summary editable-summary">
-        <label className="strategy-card field">
-          <span>Brand voice</span>
-          <textarea
-            rows={2}
-            value={strategy.brandVoice}
-            onChange={(event) => onStrategyChange({ ...strategy, brandVoice: event.target.value })}
-            disabled={isGenerating}
-          />
-        </label>
-        <label className="strategy-card field">
-          <span>Visual theme</span>
-          <textarea
-            rows={2}
-            value={strategy.visualTheme}
-            onChange={(event) => onStrategyChange({ ...strategy, visualTheme: event.target.value })}
-            disabled={isGenerating}
-          />
-        </label>
-        <div className="strategy-card">
-          <h3>Content pillars</h3>
-          <p>{strategy.contentPillars.join(" · ")}</p>
-        </div>
-      </div>
-
-      <div className="calendar-plan-list">
-        {strategy.posts.map((post) => (
-          <details key={post.day} className="calendar-day-card" open={post.day <= 2}>
-            <summary>
-              <span className="slide-badge">Day {post.day}</span>
+            <div className="strategy-summary editable-summary pf-strategy-summary">
+              <label className="strategy-card field">
+                <span>Brand voice</span>
+                <textarea
+                  rows={2}
+                  value={coerceStrategyText(strategy.brandVoice)}
+                  onChange={(event) => onStrategyChange({ ...strategy, brandVoice: event.target.value })}
+                  disabled={isGenerating}
+                />
+              </label>
+              <label className="strategy-card field">
+                <span>Visual theme</span>
+                <textarea
+                  rows={2}
+                  value={coerceStrategyText(strategy.visualTheme)}
+                  onChange={(event) => onStrategyChange({ ...strategy, visualTheme: event.target.value })}
+                  disabled={isGenerating}
+                />
+              </label>
+              <div className="strategy-card">
+                <h3>Content pillars</h3>
+                <p>{strategy.contentPillars.join(" · ")}</p>
+              </div>
+              {strategy.phases?.length ? (
+                <div className="strategy-card field-wide">
+                  <h3>Campaign phases (AI)</h3>
+                  <ul className="phase-list">
+                    {strategy.phases.map((phase) => (
+                      <li key={phase.id}>
+                        <strong>{phase.name}</strong> — days {phase.dayStart}–{phase.dayEnd}: {phase.narrativeFocus}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : post ? (
+          <div className="pf-carousel-step pf-step-split">
+            <div className="pf-step-form-column">
+            <div className="pf-carousel-step-meta">
               <span className="role-badge">{socialPlatformMeta[post.platform].label}</span>
-              <span className="format-badge">{formatScheduledLabel(strategy.startDate, post.day, post.scheduledTime)}</span>
-              <strong>{post.headline}</strong>
-            </summary>
+              <span className="format-badge">
+                {formatScheduledLabel(strategy.startDate, post.day, post.scheduledTime)}
+              </span>
+            </div>
 
-            <div className="editable-slide-grid">
-              <p className="ai-decision-note">
-                <span className="ai-badge">AI decision</span> {post.screenshotRationale}
-              </p>
+            <p className="ai-decision-note">
+              <span className="ai-badge">AI decision</span> {post.screenshotRationale}
+            </p>
 
+            <div className="editable-slide-grid pf-form-section-grid-single">
               <label className="field">
                 <span>Platform</span>
                 <select
@@ -188,6 +223,25 @@ export function AutopilotStrategyPreview({
                   disabled={isGenerating}
                 >
                   {platformOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Format</span>
+                <select
+                  value={post.format || "single"}
+                  onChange={(event) =>
+                    updatePost(post.day, {
+                      format: event.target.value as CalendarPostPlan["format"],
+                    })
+                  }
+                  disabled={isGenerating}
+                >
+                  {postFormatOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -220,7 +274,7 @@ export function AutopilotStrategyPreview({
                 />
               </label>
 
-              <label className="field">
+              <label className="field field-wide">
                 <span>Headline</span>
                 <input
                   type="text"
@@ -235,6 +289,7 @@ export function AutopilotStrategyPreview({
                 variantA={post.copyVariants[0]}
                 variantB={post.copyVariants[1]}
                 disabled={isGenerating}
+                showPreview={false}
                 onSelect={(variantId) => selectVariant(post.day, variantId)}
               />
 
@@ -268,40 +323,6 @@ export function AutopilotStrategyPreview({
                 />
               </label>
 
-              <label className="field">
-                <span>Screenshot usage</span>
-                <select
-                  value={post.screenshotUsage}
-                  onChange={(event) =>
-                    updatePost(post.day, { screenshotUsage: event.target.value as ScreenshotUsage })
-                  }
-                  disabled={isGenerating || screenshotCount === 0}
-                >
-                  {screenshotUsageOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {post.screenshotUsage !== "none" && screenshotCount > 0 ? (
-                <label className="field">
-                  <span>Screen</span>
-                  <select
-                    value={post.screenshotIndex ?? 0}
-                    onChange={(event) => updatePost(post.day, { screenshotIndex: Number(event.target.value) })}
-                    disabled={isGenerating}
-                  >
-                    {screenshotPreviews.map((preview) => (
-                      <option key={preview.index} value={preview.index}>
-                        Screen {preview.index + 1}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
               <label className="field field-wide">
                 <span>AI rationale (editable)</span>
                 <textarea
@@ -312,9 +333,23 @@ export function AutopilotStrategyPreview({
                 />
               </label>
             </div>
-          </details>
-        ))}
-      </div>
+            </div>
+
+            <ScreenshotVisualPanel
+              screenshots={screenshotPreviews}
+              screenshotUsage={post.screenshotUsage}
+              screenshotIndex={post.screenshotIndex}
+              platform={post.platform}
+              visualStyle={post.visualStyle}
+              rationale={post.screenshotRationale}
+              isGenerating={isGenerating}
+              onUsageChange={(usage) => updatePost(post.day, { screenshotUsage: usage })}
+              onScreenshotSelect={(index) => updatePost(post.day, { screenshotIndex: index })}
+              onVisualStyleChange={(value) => updatePost(post.day, { visualStyle: value })}
+            />
+          </div>
+        ) : null}
+      </StrategyCarousel>
     </section>
   );
 }

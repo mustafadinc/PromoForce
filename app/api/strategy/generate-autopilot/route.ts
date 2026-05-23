@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { BrandMemory } from "@/lib/campaignTypes";
+import { applyScreenshotColorHarmonyToAutopilotBrief } from "@/lib/applyScreenshotColorHarmony";
 import { generateAutopilotStrategyBrief } from "@/lib/agents/autopilotStrategyAgent";
+import { extractScreenshotColorProfile } from "@/lib/extractScreenshotColorProfile";
 import { prepareStrategyImages } from "@/lib/strategyImageUtils";
 import { extractScreenshots, parseAppProfile, validateAppProfile, validateScreenshots } from "@/lib/parseCampaignForm";
 
@@ -47,18 +49,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: screenshotError }, { status: 400 });
     }
 
+    const colorProfile = await extractScreenshotColorProfile(screenshots);
     const images = await prepareStrategyImages(screenshots);
     const performanceContext = String(formData.get("performanceContext") || "");
-    const strategy = await generateAutopilotStrategyBrief(
-      profile,
-      images,
-      duration,
-      startDate,
-      brandMemory,
-      performanceContext,
+    const strategy = applyScreenshotColorHarmonyToAutopilotBrief(
+      await generateAutopilotStrategyBrief(
+        profile,
+        images,
+        duration,
+        startDate,
+        brandMemory,
+        performanceContext,
+      ),
+      colorProfile,
     );
 
-    return NextResponse.json({ strategy });
+    let campaignId: string | null = null;
+    let postIdsByDay: Record<number, string> = {};
+
+    if (process.env.DATABASE_URL) {
+      try {
+        const { requireSession, requireWorkspace } = await import("@/lib/auth-server");
+        const { createApp, listAppsForWorkspace } = await import("@/lib/db/services/workspaceService");
+        const { createCampaign } = await import("@/lib/db/services/campaignService");
+        const user = await requireSession();
+        const workspace = await requireWorkspace(user.id);
+        let apps = await listAppsForWorkspace(workspace.id);
+        let app = apps.find((a) => (a.profile as { appName?: string }).appName === profile.appName);
+        if (!app) {
+          app = await createApp(workspace.id, profile);
+        }
+        const { campaign, postIdsByDay: ids } = await createCampaign(app.id, "marketing_autopilot", strategy);
+        campaignId = campaign.id;
+        postIdsByDay = ids;
+      } catch {
+        // DB optional during local dev without auth
+      }
+    }
+
+    return NextResponse.json({ strategy, campaignId, postIdsByDay });
   } catch (error) {
     return NextResponse.json(
       {

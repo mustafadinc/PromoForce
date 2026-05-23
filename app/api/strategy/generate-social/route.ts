@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateSocialStrategyBrief } from "@/lib/agents/socialStrategyAgent";
+import { extractScreenshotColorProfile } from "@/lib/extractScreenshotColorProfile";
 import { prepareStrategyImages } from "@/lib/strategyImageUtils";
 import { extractScreenshots, parseAppProfile, validateAppProfile, validateScreenshots } from "@/lib/parseCampaignForm";
 
@@ -19,9 +20,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: screenshotError }, { status: 400 });
     }
 
+    const colorProfile = await extractScreenshotColorProfile(screenshots);
     const images = await prepareStrategyImages(screenshots);
     const performanceContext = String(formData.get("performanceContext") || "");
-    const strategy = await generateSocialStrategyBrief(profile, images, performanceContext);
+    const strategy = await generateSocialStrategyBrief(profile, images, performanceContext, colorProfile);
 
     return NextResponse.json({ strategy });
   } catch (error) {

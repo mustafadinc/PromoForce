@@ -84,6 +84,18 @@ export type SlideRole = "hero" | "feature" | "cta";
 
 export type ScreenshotUsage = "hero_mockup" | "feature_mockup" | "none";
 
+export type ScreenshotUiTone = "light" | "dark" | "mixed";
+
+export type ScreenshotColorProfile = {
+  uiTone: ScreenshotUiTone;
+  averageLuminance: number;
+  dominantColors: string[];
+  accentColor: string;
+  secondaryColor: string;
+  backgroundBase: string;
+  harmonyGuidance: string;
+};
+
 export type StoreSlideBeat =
   | "hook"
   | "problem_outcome"
@@ -167,6 +179,7 @@ export type StrategyBrief = {
   backgroundScenes: BackgroundScene[];
   screenshotAssessments: ScreenshotAssessment[];
   slides: StoreSlidePlan[];
+  colorProfile?: ScreenshotColorProfile | null;
 };
 
 export type GeneratedSlideVariant = {
@@ -183,11 +196,17 @@ export type GeneratedSlide = {
   dataUrl: string;
   prompt: string;
   backgroundDataUrl?: string;
+  mockupColor?: string;
+  renderVersion?: number;
   variants?: GeneratedSlideVariant[];
   selectedVariantId?: string;
 };
 
 export type StoreSlideRegenerateMode = "full" | "background" | "composite";
+
+export type StoreSlideRegenerateOptions = {
+  mockupColor?: string;
+};
 
 export type UploadedScreenshot = {
   file: File;
@@ -229,6 +248,9 @@ export type SocialStrategyBrief = {
   primaryMessage: string;
   targetAudience: string;
   visualTheme: string;
+  accentColor?: string;
+  brandColor?: string;
+  colorProfile?: ScreenshotColorProfile | null;
   assets: SocialAssetPlan[];
 };
 
@@ -264,10 +286,49 @@ export type AutopilotPostRole =
   | "tip"
   | "behind_the_scenes";
 
+export type PostFormat = "single" | "carousel" | "story" | "reels";
+
+export type VisualTemplateId =
+  | "hero_mockup"
+  | "quote_card"
+  | "stat_card"
+  | "comparison_split"
+  | "annotated_screenshot"
+  | "feature_spotlight";
+
+export type VideoTemplateId =
+  | "logo_reveal"
+  | "mood_teaser"
+  | "screenshot_reel"
+  | "kinetic_headline"
+  | "countdown_teaser";
+
+export type CampaignPhase = {
+  id: string;
+  name: string;
+  goal: string;
+  dayStart: number;
+  dayEnd: number;
+  narrativeFocus: string;
+};
+
+export type CarouselSlidePlan = {
+  slideIndex: number;
+  headline: string;
+  subheadline?: string;
+  visualTemplate: VisualTemplateId;
+  screenshotIndex?: number | null;
+};
+
 export type CalendarPostPlan = {
   day: number;
   platform: SocialPlatform;
   role: AutopilotPostRole;
+  format: PostFormat;
+  phaseId?: string;
+  visualTemplate?: VisualTemplateId;
+  videoTemplate?: VideoTemplateId;
+  carouselSlides?: CarouselSlidePlan[];
   headline: string;
   subheadline: string;
   hook: string;
@@ -279,6 +340,7 @@ export type CalendarPostPlan = {
   visualStyle: string;
   imageSize: ImageSize;
   scheduledTime: string;
+  scheduledAt?: string;
   copyVariants: CopyVariant[];
   selectedVariantId: CopyVariantId;
 };
@@ -288,10 +350,14 @@ export type AutopilotStrategyBrief = {
   primaryMessage: string;
   targetAudience: string;
   visualTheme: string;
+  accentColor?: string;
+  brandColor?: string;
+  colorProfile?: ScreenshotColorProfile | null;
   brandVoice: string;
   duration: CalendarDuration;
   startDate: string;
   contentPillars: string[];
+  phases: CampaignPhase[];
   posts: CalendarPostPlan[];
 };
 
@@ -301,6 +367,7 @@ export type GeneratedCalendarPost = {
   scheduledTime: string;
   platform: SocialPlatform;
   role: AutopilotPostRole;
+  format?: PostFormat;
   headline: string;
   hook: string;
   caption: string;
@@ -310,6 +377,10 @@ export type GeneratedCalendarPost = {
   prompt: string;
   selectedVariantId: CopyVariantId;
   usedScreenshot: boolean;
+  postId?: string;
+  campaignId?: string;
+  carouselDataUrls?: string[];
+  videoDataUrl?: string;
 };
 
 export const calendarDurationOptions: Array<{ value: CalendarDuration; label: string }> = [

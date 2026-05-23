@@ -1,4 +1,5 @@
 import type { UploadedScreenshot } from "@/lib/campaignTypes";
+import { normalizeScreenshotForMockup } from "@/lib/normalizeScreenshotForMockup";
 
 export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,7 +22,12 @@ export function readImageDimensionsFromDataUrl(dataUrl: string): Promise<{ width
 }
 
 export async function buildUploadedScreenshot(file: File, index: number): Promise<UploadedScreenshot> {
-  const previewUrl = await readFileAsDataUrl(file);
-  const { width, height } = await readImageDimensionsFromDataUrl(previewUrl);
-  return { file, previewUrl, index, width, height };
+  const normalized = await normalizeScreenshotForMockup(file);
+  return {
+    file: normalized.file,
+    previewUrl: normalized.dataUrl,
+    index,
+    width: normalized.width,
+    height: normalized.height,
+  };
 }

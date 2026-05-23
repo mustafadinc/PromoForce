@@ -1,4 +1,5 @@
 import type { AppProfile, BackgroundTreatment, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
+import { buildScreenshotColorHarmonyBlock } from "@/lib/applyScreenshotColorHarmony";
 import {
   backgroundPromptCompositionBlock,
   backgroundPromptExclusionsBlock,
@@ -61,12 +62,15 @@ export function buildStoreSlideBackgroundPrompt(
     "SCENE DESCRIPTION:",
     sceneDescription,
     "",
-    backgroundPromptQualityBlock(),
+    backgroundPromptQualityBlock(strategy.colorProfile),
+    "",
+    buildScreenshotColorHarmonyBlock(strategy.colorProfile),
     "",
     "BRAND WORLD (consistent across set):",
     strategy.designSystem,
     strategy.visualTheme,
     `Accent color: ${strategy.accentColor}`,
+    strategy.brandColor ? `Secondary / gradient end: ${strategy.brandColor}` : "",
     "",
     backgroundPromptCompositionBlock(!isCtaSlide),
     "",

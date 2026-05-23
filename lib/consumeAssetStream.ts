@@ -12,7 +12,7 @@ export class GenerationCancelledError extends Error {
 export type AssetStreamHandlers = {
   onStatus?: (message: string) => void;
   onRevisedPrompt?: (text: string) => void;
-  onPartial?: (dataUrl: string, index: number) => void;
+  onPartial?: (dataUrl: string, index: number, stage?: "background" | "composite" | "polish") => void;
   onComplete?: (result: GenerateImageResult & Record<string, unknown>) => void;
   onError?: (message: string) => void;
 };
@@ -71,7 +71,7 @@ export async function consumeAssetStream(
         } else if (event.type === "revised_prompt") {
           handlers.onRevisedPrompt?.(event.text);
         } else if (event.type === "partial") {
-          handlers.onPartial?.(event.dataUrl, event.index);
+          handlers.onPartial?.(event.dataUrl, event.index, event.stage);
         } else if (event.type === "complete") {
           finalResult = event.result;
           handlers.onComplete?.(event.result);

@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GeneratedSlide, StoreSlideRegenerateMode } from "@/lib/campaignTypes";
+import { Download } from "lucide-react";
+import { CopyToast } from "@/components/CopyToast";
+import { ExportStatusStrip } from "@/components/ExportStatusStrip";
+import { StoreSlideExportCard } from "@/components/StoreSlideExportCard";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
+import type { GeneratedSlide, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
+import { STORE_SLIDE_COUNT } from "@/lib/campaignTypes";
 import { APP_STORE_EXPORT_PRESETS, type AppStoreExportPreset } from "@/lib/appStoreImageSizes";
 import { APP_STORE_EXPORT_HEIGHT, APP_STORE_EXPORT_WIDTH } from "@/lib/appStoreImageSizes";
 import { lintAppStoreSet } from "@/lib/appStoreExportLintClient";
@@ -11,10 +17,15 @@ type StoreSetGalleryProps = {
   slides: GeneratedSlide[];
   progressLabel: string;
   partialPreviewUrl?: string;
+  regeneratingSlideNumber?: number | null;
   isGenerating: boolean;
   onRestart: () => void;
   onCancel?: () => void;
-  onRegenerateSlide?: (slideNumber: number, mode?: StoreSlideRegenerateMode) => void;
+  onRegenerateSlide?: (
+    slideNumber: number,
+    mode?: StoreSlideRegenerateMode,
+    options?: StoreSlideRegenerateOptions,
+  ) => void;
   onSelectVariant?: (slideNumber: number, variantId: string) => void;
 };
 
@@ -22,6 +33,7 @@ export function StoreSetGallery({
   slides,
   progressLabel,
   partialPreviewUrl,
+  regeneratingSlideNumber = null,
   isGenerating,
   onRestart,
   onCancel,
@@ -32,6 +44,7 @@ export function StoreSetGallery({
   const [lintMessage, setLintMessage] = useState<string | null>(null);
   const [isLinting, setIsLinting] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
+  const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
 
   const exportLabel = `${APP_STORE_EXPORT_WIDTH}×${APP_STORE_EXPORT_HEIGHT}`;
   const aspectRatio = `${APP_STORE_EXPORT_WIDTH} / ${APP_STORE_EXPORT_HEIGHT}`;
@@ -44,26 +57,28 @@ export function StoreSetGallery({
 
     let cancelled = false;
     setIsLinting(true);
-    void lintAppStoreSet(slides, exportPreset).then((result) => {
-      if (cancelled) return;
-      if (!result.issues.length) {
-        setLintMessage("Pre-upload lint: all slides passed.");
-        return;
-      }
-      const errors = result.issues.filter((i) => i.level === "error");
-      const warns = result.issues.filter((i) => i.level === "warn");
-      setLintMessage(
-        [
-          errors.length ? `${errors.length} error(s)` : null,
-          warns.length ? `${warns.length} warning(s)` : null,
-          result.ok ? "OK for export with notes." : "Fix errors before App Store Connect upload.",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
-    }).finally(() => {
-      if (!cancelled) setIsLinting(false);
-    });
+    void lintAppStoreSet(slides, exportPreset)
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.issues.length) {
+          setLintMessage("Pre-upload lint: all slides passed.");
+          return;
+        }
+        const errors = result.issues.filter((i) => i.level === "error");
+        const warns = result.issues.filter((i) => i.level === "warn");
+        setLintMessage(
+          [
+            errors.length ? `${errors.length} error(s)` : null,
+            warns.length ? `${warns.length} warning(s)` : null,
+            result.ok ? "OK for export with notes." : "Fix errors before App Store Connect upload.",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLinting(false);
+      });
 
     return () => {
       cancelled = true;
@@ -88,71 +103,90 @@ export function StoreSetGallery({
     setIsZipping(true);
     try {
       await downloadAppStoreZip(slides, exportPreset);
+      void copyText("ZIP bundle downloaded", "Downloaded campaign ZIP");
     } finally {
       setIsZipping(false);
     }
   };
 
+  const displaySlides =
+    isGenerating && slides.length === 0
+      ? Array.from({ length: 5 }, (_, index) => ({
+          slideNumber: index + 1,
+          role: index === 0 ? ("hero" as const) : index === 4 ? ("cta" as const) : ("feature" as const),
+          headline: progressLabel || "Generating...",
+          subheadline: "",
+          dataUrl: index === 0 && partialPreviewUrl ? partialPreviewUrl : "",
+          prompt: "",
+        }))
+      : slides;
+
+  const expectedSlides = STORE_SLIDE_COUNT;
+  const isPartialSet = !isGenerating && slides.length > 0 && slides.length < expectedSlides;
+
   return (
-    <section className="preview-panel gallery-panel">
-      <div className="preview-toolbar">
-        <div>
-          <p className="eyebrow">App Store Pack</p>
-          <h2>{isGenerating ? progressLabel : `Your 5-Slide Set (${exportLabel})`}</h2>
-        </div>
-        <div className="toolbar-actions">
+    <section className="preview-panel gallery-panel pf-gallery-panel">
+      <ExportStatusStrip
+        isGenerating={isGenerating}
+        progressLabel={progressLabel}
+        complete={!isGenerating && slides.length > 0}
+        completeTitle={isPartialSet ? "Export incomplete" : "Export complete"}
+        completeMessage={
+          isPartialSet
+            ? `${slides.length} of ${expectedSlides} App Store slides generated at ${exportLabel}. Retry from Strategy or regenerate missing slides.`
+            : `${slides.length} App Store slides ready at ${exportLabel}.`
+        }
+      />
+
+      <div className="pf-export-header">
+        <div className="pf-export-header-actions">
           {isGenerating ? (
-            <button className="secondary-action cancel-action" type="button" onClick={onCancel}>
+            <button className="secondary-action cancel-action compact-action" type="button" onClick={onCancel}>
               Cancel
             </button>
           ) : null}
-          <button className="secondary-action" type="button" onClick={onRestart} disabled={isGenerating}>
+          <button className="secondary-action compact-action" type="button" onClick={onRestart} disabled={isGenerating}>
             New Campaign
           </button>
           <button
-            className="secondary-action"
+            className="secondary-action compact-action"
             type="button"
             onClick={downloadAll}
             disabled={isGenerating || slides.length === 0}
           >
             Download All
           </button>
+          <label className="export-preset-field">
+            <span>Device preset</span>
+            <select
+              value={exportPreset}
+              onChange={(e) => setExportPreset(e.target.value as AppStoreExportPreset)}
+              disabled={isGenerating || slides.length === 0}
+            >
+              {Object.values(APP_STORE_EXPORT_PRESETS).map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="export-zip-btn pf-export-zip-btn"
+            type="button"
+            onClick={() => void handleZipExport()}
+            disabled={isZipping || isGenerating || slides.length === 0}
+          >
+            <Download aria-hidden="true" />
+            <span>{isZipping ? "Building ZIP…" : "Download Package (ZIP)"}</span>
+          </button>
         </div>
+        {lintMessage ? (
+          <p className={`export-lint-message pf-export-lint ${isLinting ? "is-pending" : ""}`}>{lintMessage}</p>
+        ) : null}
       </div>
 
-      {slides.length > 0 && !isGenerating ? (
-        <div className="export-controls">
-          <div className="export-controls-main">
-            <label className="export-preset-field">
-              <span>Export size</span>
-              <select
-                value={exportPreset}
-                onChange={(e) => setExportPreset(e.target.value as AppStoreExportPreset)}
-              >
-                {Object.values(APP_STORE_EXPORT_PRESETS).map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="export-zip-btn"
-              type="button"
-              onClick={() => void handleZipExport()}
-              disabled={isZipping}
-            >
-              {isZipping ? "Building ZIP…" : "Download ZIP bundle"}
-            </button>
-          </div>
-          {lintMessage ? (
-            <p className={`export-lint-message ${isLinting ? "is-pending" : ""}`}>{lintMessage}</p>
-          ) : null}
-        </div>
-      ) : null}
-
       {slides.length > 1 && !isGenerating ? (
-        <div className="showcase-strip" aria-label="Set preview">
+        <div className="showcase-strip pf-cohesion-strip">
           <p className="showcase-label">Set cohesion preview</p>
           <div className="showcase-thumbs">
             {slides.map((slide) => (
@@ -164,114 +198,33 @@ export function StoreSetGallery({
         </div>
       ) : null}
 
-      {isGenerating ? (
-        <div className="generation-preview">
+      {isGenerating && partialPreviewUrl && slides.length > 0 && regeneratingSlideNumber === null ? (
+        <div className="generation-preview pf-stream-preview">
           <div className="generation-preview-frame" style={{ aspectRatio }}>
-            {partialPreviewUrl ? (
-              <img src={partialPreviewUrl} alt="Live slide preview" className="generation-preview-image" />
-            ) : (
-              <div className="generation-preview-placeholder">
-                <span className="generation-banner-spinner" aria-hidden="true" />
-                <p>{progressLabel || "Generating slide…"}</p>
-                <p className="generation-preview-hint">
-                  First preview appears when the background finishes (often 30–90s).
-                </p>
-              </div>
-            )}
+            <img src={partialPreviewUrl} alt="Live slide preview" className="generation-preview-image" />
           </div>
           <p className="generation-preview-caption">{progressLabel}</p>
         </div>
       ) : null}
 
-      <div className="store-gallery">
-        {slides.map((slide) => (
-          <article key={slide.slideNumber} className="store-slide-card">
-            <div className="store-slide-frame" style={{ aspectRatio }}>
-              <img src={slide.dataUrl} alt={`${slide.headline} app store slide`} />
-            </div>
-            <div className="store-slide-copy">
-              <div className="slide-plan-header">
-                <span className="slide-badge">Slide {slide.slideNumber}</span>
-                <span className="role-badge">{slide.role}</span>
-              </div>
-              <h3>{slide.headline}</h3>
-              <p>{slide.subheadline}</p>
-
-              {slide.variants && slide.variants.length > 1 ? (
-                <div className="variant-picker">
-                  <span>Pick best variant</span>
-                  <div className="variant-picker-row">
-                    {slide.variants.map((variant) => (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        className={
-                          slide.selectedVariantId === variant.id
-                            ? "variant-thumb active"
-                            : "variant-thumb"
-                        }
-                        onClick={() => onSelectVariant?.(slide.slideNumber, variant.id)}
-                        disabled={isGenerating}
-                      >
-                        <img src={variant.dataUrl} alt={variant.id} />
-                        <span>{variant.id}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="store-slide-actions">
-                <button
-                  className="slide-action slide-action-download"
-                  type="button"
-                  onClick={() => downloadSlide(slide)}
-                >
-                  Download PNG
-                </button>
-                {onRegenerateSlide ? (
-                  <div className="slide-action-refine">
-                    <span className="slide-action-refine-label">Refine slide</span>
-                    <div className="slide-action-grid">
-                      <button
-                        className="slide-action slide-action-composite"
-                        type="button"
-                        onClick={() => onRegenerateSlide(slide.slideNumber, "composite")}
-                        disabled={isGenerating || !slide.backgroundDataUrl}
-                        title={
-                          slide.backgroundDataUrl
-                            ? "Reuse background — refresh text & mockup (no AI cost)"
-                            : "Run a full generate first to save a background"
-                        }
-                      >
-                        Composite only
-                      </button>
-                      <button
-                        className="slide-action slide-action-background"
-                        type="button"
-                        onClick={() => onRegenerateSlide(slide.slideNumber, "background")}
-                        disabled={isGenerating}
-                        title="New AI background, same headline + screenshot"
-                      >
-                        New background
-                      </button>
-                      <button
-                        className="slide-action slide-action-full"
-                        type="button"
-                        onClick={() => onRegenerateSlide(slide.slideNumber, "full")}
-                        disabled={isGenerating}
-                        title="Regenerate background, composite, and polish"
-                      >
-                        Full regen
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </article>
+      <div className="pf-export-grid">
+        {displaySlides.map((slide) => (
+          <StoreSlideExportCard
+            key={`${slide.slideNumber}-${"renderVersion" in slide ? slide.renderVersion ?? 0 : 0}`}
+            slide={slide}
+            aspectRatio={aspectRatio}
+            isGenerating={isGenerating}
+            isRegenerating={regeneratingSlideNumber === slide.slideNumber}
+            isStreaming={isGenerating && !slide.dataUrl && slide.slideNumber === 1}
+            onDownload={downloadSlide}
+            onCopyHeadline={(text) => void copyText(text, "Headline copied")}
+            onRegenerateSlide={onRegenerateSlide}
+            onSelectVariant={onSelectVariant}
+          />
         ))}
       </div>
+
+      <CopyToast message={copyMessage} onDismiss={clearCopyMessage} />
     </section>
   );
 }

@@ -1,4 +1,5 @@
-import type { SocialAssetPlan, ScreenshotUsage } from "@/lib/campaignTypes";
+import type { SocialAssetPlan, ScreenshotUsage, SocialPlatform } from "@/lib/campaignTypes";
+import { socialPlatformMeta } from "@/lib/campaignTypes";
 
 export function normalizeSocialAssetEdit(
   asset: SocialAssetPlan,
@@ -6,6 +7,10 @@ export function normalizeSocialAssetEdit(
   screenshotCount: number,
 ): SocialAssetPlan {
   const next = { ...asset, ...patch };
+
+  if (patch.platform) {
+    next.imageSize = socialPlatformMeta[patch.platform].imageSize;
+  }
 
   if (patch.hashtags) {
     next.hashtags = patch.hashtags.filter(Boolean);
@@ -22,6 +27,12 @@ export function normalizeSocialAssetEdit(
 
   return next;
 }
+
+export const socialPlatformOptions: Array<{ value: SocialPlatform; label: string; hint: string }> = [
+  { value: "instagram_feed", label: "Instagram Feed Post", hint: "Square 1080×1080 image post" },
+  { value: "instagram_story", label: "Instagram Story", hint: "Vertical 1080×1920 story frame" },
+  { value: "twitter", label: "X / Twitter Post", hint: "Wide 1600×900 announcement card" },
+];
 
 export const screenshotUsageOptions: Array<{ value: ScreenshotUsage; label: string }> = [
   { value: "hero_mockup", label: "Hero mockup (use screenshot)" },

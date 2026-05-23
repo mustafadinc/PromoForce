@@ -1,8 +1,11 @@
+import { applyScreenshotColorHarmonyToSocialBrief } from "@/lib/applyScreenshotColorHarmony";
 import { buildCopyVariants, ensureCopyVariants } from "@/lib/copyVariants";
+import { coerceStrategyText } from "@/lib/strategyText";
 import {
   SOCIAL_ASSET_COUNT,
   type AppProfile,
   type ImageSize,
+  type ScreenshotColorProfile,
   type SocialAssetPlan,
   type SocialAssetRole,
   type SocialPlatform,
@@ -152,10 +155,10 @@ function normalizeSocialStrategyBrief(
   }
 
   return {
-    positioning: String(raw.positioning || fallback.positioning).trim(),
-    primaryMessage: String(raw.primaryMessage || fallback.primaryMessage).trim(),
-    targetAudience: String(raw.targetAudience || fallback.targetAudience).trim(),
-    visualTheme: String(raw.visualTheme || fallback.visualTheme).trim(),
+    positioning: coerceStrategyText(raw.positioning, fallback.positioning),
+    primaryMessage: coerceStrategyText(raw.primaryMessage, fallback.primaryMessage),
+    targetAudience: coerceStrategyText(raw.targetAudience, fallback.targetAudience),
+    visualTheme: coerceStrategyText(raw.visualTheme, fallback.visualTheme),
     assets: assets.map((asset, index) => normalizeAsset(asset, index, screenshotCount)),
   };
 }
@@ -164,6 +167,7 @@ export async function generateSocialStrategyBrief(
   profile: AppProfile,
   images: StrategyImageInput[],
   performanceContext = "",
+  colorProfile: ScreenshotColorProfile | null = null,
 ): Promise<SocialStrategyBrief> {
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
@@ -202,6 +206,16 @@ export async function generateSocialStrategyBrief(
         "hook: first attention-grabbing line for the post.",
         "caption: full post body excluding hashtags.",
         "Decide strategically whether each asset uses a screenshot or text-only brand creative.",
+        colorProfile
+          ? [
+              "",
+              "Screenshot color analysis (visualTheme and each visualStyle MUST harmonize):",
+              `- UI tone: ${colorProfile.uiTone}`,
+              `- Dominant colors: ${colorProfile.dominantColors.join(", ")}`,
+              `- Accent: ${colorProfile.accentColor}`,
+              colorProfile.harmonyGuidance,
+            ].join("\n")
+          : "",
       ].join("\n"),
     },
     ...images.map((image) => ({
@@ -248,13 +262,19 @@ export async function generateSocialStrategyBrief(
       throw new Error("Social strategy model returned empty content.");
     }
 
-    return normalizeSocialStrategyBrief(JSON.parse(content) as Partial<SocialStrategyBrief>, profile, screenshotCount);
+    return applyScreenshotColorHarmonyToSocialBrief(
+      normalizeSocialStrategyBrief(JSON.parse(content) as Partial<SocialStrategyBrief>, profile, screenshotCount),
+      colorProfile,
+    );
   } catch {
     const fallback = buildFallbackSocialStrategy(profile, screenshotCount);
-    return {
-      ...fallback,
-      assets: fallback.assets.map((asset, index) => normalizeAsset(asset, index, screenshotCount)),
-    };
+    return applyScreenshotColorHarmonyToSocialBrief(
+      {
+        ...fallback,
+        assets: fallback.assets.map((asset, index) => normalizeAsset(asset, index, screenshotCount)),
+      },
+      colorProfile,
+    );
   }
 }
 

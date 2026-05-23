@@ -5,7 +5,7 @@ import { buildStoreSlidePrompt } from "@/lib/buildStoreSlidePrompt";
 import { createAssetStreamResponse } from "@/lib/createAssetStreamResponse";
 import { getAppStoreGenerationSize } from "@/lib/appStoreImageSizes";
 import type { AppProfile, LockedTypography, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
-import { extractScreenshots, parseAppProfile } from "@/lib/parseCampaignForm";
+import { extractSlideScreenshot, parseAppProfile } from "@/lib/parseCampaignForm";
 
 function parseStrategy(formData: FormData): StrategyBrief {
   return JSON.parse(String(formData.get("strategy") || "{}")) as StrategyBrief;
@@ -41,7 +41,6 @@ export async function POST(request: Request) {
     const profile = parseAppProfile(formData) as AppProfile;
     const strategy = parseStrategy(formData);
     const slide = parseSlide(formData);
-    const screenshots = extractScreenshots(formData);
 
     if (!slide.slideNumber) {
       return NextResponse.json({ error: "Slide plan is required." }, { status: 400 });
@@ -65,6 +64,7 @@ export async function POST(request: Request) {
       | "composite";
     const existingBackgroundBase64 =
       String(formData.get("existingBackgroundBase64") || "") || undefined;
+    const mockupColor = String(formData.get("mockupColor") || "") || undefined;
     const styleAnchorHint =
       slide.slideNumber !== strategy.styleAnchorSlide
         ? `Cohesive with slide ${strategy.styleAnchorSlide} — same polish and brand intensity.`
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     });
     const screenshot =
       slide.screenshotIndex !== null && slide.screenshotIndex >= 0
-        ? screenshots[slide.screenshotIndex] || null
+        ? extractSlideScreenshot(formData, slide.screenshotIndex)
         : null;
     const backgroundSceneCache = parseBackgroundSceneCache(formData);
     const cachedBackgroundBase64 =
@@ -113,6 +113,7 @@ export async function POST(request: Request) {
         styleReferenceBase64,
         regenerateMode,
         existingBackgroundBase64,
+        mockupColor,
         styleAnchorSlide: strategy.styleAnchorSlide,
       },
       {

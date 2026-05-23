@@ -4,6 +4,7 @@ import {
   getAppStoreGenerationSize,
   isAppStorePortraitAspect,
 } from "@/lib/appStoreImageSizes";
+import { MOCKUP_SCREEN_FIT_VERSION } from "@/lib/metallicIPhoneFrame";
 import { upscaleToAppStoreExport } from "@/lib/upscaleAppStoreExport";
 import { createSolidBackground } from "@/lib/createSolidBackground";
 import { isSlideSolidBackground } from "@/lib/storeCreativeDirector";
@@ -16,7 +17,9 @@ import type {
   SlideLayoutStyle,
   StoreSlidePlan,
   StoreSlideRegenerateMode,
+  VisualTemplateId,
 } from "@/lib/campaignTypes";
+import { renderVisualTemplate } from "@/lib/visualTemplates/registry";
 import {
   buildImageModelFallbackChain,
   getImageModel,
@@ -430,6 +433,8 @@ export type GenerateStoreSlideInput = {
   regenerateMode?: StoreSlideRegenerateMode;
   existingBackgroundBase64?: string;
   styleAnchorSlide?: number;
+  visualTemplate?: VisualTemplateId;
+  mockupColor?: string;
 };
 
 export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput): AsyncGenerator<ImageStreamEvent> {
@@ -451,7 +456,7 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
       };
       return;
     }
-    yield { type: "status", message: "Reusing saved background — recompositing only..." };
+    yield { type: "status", message: "Reusing saved background — recompositing mockup..." };
     backgroundBuffer = Buffer.from(input.existingBackgroundBase64, "base64");
     modelUsed = "saved-background";
   } else if (regenerateMode !== "background" && input.cachedBackgroundBase64) {
@@ -498,16 +503,20 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
     }
   }
 
-  yield {
-    type: "partial",
-    dataUrl: toDataUrl(backgroundBuffer.toString("base64")),
-    index: 0,
-    stage: "background",
-  };
+  if (regenerateMode !== "composite") {
+    yield {
+      type: "partial",
+      dataUrl: toDataUrl(backgroundBuffer.toString("base64")),
+      index: 0,
+      stage: "background",
+    };
+  }
 
   yield {
     type: "status",
-    message: input.screenshot ? "Compositing screenshot + headline..." : "Applying headline overlay...",
+    message: input.screenshot
+      ? `Compositing screenshot + headline (mockup fit v${MOCKUP_SCREEN_FIT_VERSION})...`
+      : "Applying headline overlay...",
   };
 
   const screenshotBuffer = input.screenshot ? Buffer.from(await input.screenshot.arrayBuffer()) : null;
@@ -526,24 +535,39 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
     );
   }
 
-  let composite = await compositeMarketingSlide({
-    background: backgroundBuffer,
-    screenshot: screenshotBuffer,
-    headline: input.headline || "",
-    headlineVerb: input.headlineVerb,
-    headlineDescriptor: input.headlineDescriptor,
-    subheadline: input.subheadline || "",
-    width,
-    height,
-    isCta,
-    appName: input.appName,
-    accentColor: input.accentColor,
-    headlineAccent: input.headlineAccent,
-    featureHighlights: input.featureHighlights,
-    showAppBranding: input.showAppBranding,
-    layoutStyle: input.layoutStyle,
-    lockedTypography,
-  });
+  const template = input.visualTemplate;
+  const useAltTemplate = template && template !== "hero_mockup";
+
+  let composite = useAltTemplate
+    ? await renderVisualTemplate(template, {
+        background: backgroundBuffer,
+        screenshot: screenshotBuffer,
+        headline: input.headline || "",
+        subheadline: input.subheadline || "",
+        width,
+        height,
+        accentColor: input.accentColor,
+        quoteAttribution: input.appName,
+      })
+    : await compositeMarketingSlide({
+        background: backgroundBuffer,
+        screenshot: screenshotBuffer,
+        headline: input.headline || "",
+        headlineVerb: input.headlineVerb,
+        headlineDescriptor: input.headlineDescriptor,
+        subheadline: input.subheadline || "",
+        width,
+        height,
+        isCta,
+        appName: input.appName,
+        accentColor: input.accentColor,
+        headlineAccent: input.headlineAccent,
+        featureHighlights: input.featureHighlights,
+        showAppBranding: input.showAppBranding,
+        layoutStyle: input.layoutStyle,
+        lockedTypography,
+        mockupColor: input.mockupColor,
+      });
 
   yield {
     type: "partial",
@@ -552,7 +576,11 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
     stage: "composite",
   };
 
-  const runPolish = getPolishPassEnabled() && input.slidePlan && regenerateMode !== "composite";
+  const runPolish =
+    getPolishPassEnabled() &&
+    input.slidePlan &&
+    regenerateMode !== "composite" &&
+    !screenshotBuffer;
 
   if (runPolish) {
     try {
@@ -613,4 +641,19 @@ export async function generateStoreSlideImage(input: GenerateStoreSlideInput): P
   }
 
   return final;
+}
+
+/** Single background image for carousel / alt templates (non-streaming). */
+export async function generateBackgroundBuffer(input: GenerateBackgroundInput): Promise<Buffer> {
+  const apiKey = getOpenAIKey();
+  const quality = input.quality || getImageQuality();
+  let promptForImage = input.prompt;
+
+  if (getRevisePromptsEnabled()) {
+    const revised = await revisePromptWithChat(apiKey, input.prompt);
+    if (revised) promptForImage = revised;
+  }
+
+  const result = await generateWithImageApi(apiKey, promptForImage, input.size, quality);
+  return result.buffer;
 }

@@ -1,6 +1,8 @@
+import { applyScreenshotColorHarmonyToStoreBrief } from "@/lib/applyScreenshotColorHarmony";
 import {
   STORE_SLIDE_COUNT,
   type AppProfile,
+  type ScreenshotColorProfile,
   type ScreenshotUsage,
   type SlideRole,
   type StoreSlidePlan,
@@ -20,6 +22,7 @@ import {
   normalizeSlideCreativeFields,
 } from "@/lib/storeCreativeDirector";
 import type { ScreenshotAssessment, ScreenshotQualityRating } from "@/lib/campaignTypes";
+import { coerceStrategyText } from "@/lib/strategyText";
 import type { StrategyImageInput } from "@/lib/strategyImageUtils";
 
 export type { StrategyImageInput };
@@ -170,7 +173,7 @@ function normalizeStrategyBrief(raw: Partial<StrategyBrief>, profile: AppProfile
     targetAudience: String(raw.targetAudience || fallback.targetAudience).trim(),
     narrativeArc: String(raw.narrativeArc || fallback.narrativeArc).trim(),
     designSystem: String(raw.designSystem || fallback.designSystem).trim(),
-    visualTheme: String(raw.visualTheme || fallback.visualTheme).trim(),
+    visualTheme: coerceStrategyText(raw.visualTheme, fallback.visualTheme),
     accentColor: String(raw.accentColor || fallback.accentColor).trim(),
     brandColor: String(raw.brandColor || raw.accentColor || fallback.brandColor).trim(),
     setMode:
@@ -189,6 +192,7 @@ function normalizeStrategyBrief(raw: Partial<StrategyBrief>, profile: AppProfile
 export async function generateStrategyBrief(
   profile: AppProfile,
   images: StrategyImageInput[],
+  colorProfile: ScreenshotColorProfile | null = null,
 ): Promise<StrategyBrief> {
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
@@ -200,7 +204,20 @@ export async function generateStrategyBrief(
   > = [
     {
       type: "text",
-      text: buildAsoStrategyPromptBlock(profile, screenshotCount),
+      text: [
+        buildAsoStrategyPromptBlock(profile, screenshotCount),
+        colorProfile
+          ? [
+              "",
+              "Screenshot color analysis (backgrounds, accentColor, brandColor, and visualTheme MUST harmonize with this):",
+              `- UI tone: ${colorProfile.uiTone}`,
+              `- Dominant colors: ${colorProfile.dominantColors.join(", ")}`,
+              `- Suggested accent: ${colorProfile.accentColor}`,
+              `- Gradient secondary: ${colorProfile.secondaryColor}`,
+              colorProfile.harmonyGuidance,
+            ].join("\n")
+          : "",
+      ].join("\n"),
     },
     ...images.map((image) => ({
       type: "image_url" as const,
@@ -256,8 +273,14 @@ export async function generateStrategyBrief(
       throw new Error("Strategy model returned empty content.");
     }
 
-    return normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount);
+    return applyScreenshotColorHarmonyToStoreBrief(
+      normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
+      colorProfile,
+    );
   } catch {
-    return applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile);
+    return applyScreenshotColorHarmonyToStoreBrief(
+      applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
+      colorProfile,
+    );
   }
 }

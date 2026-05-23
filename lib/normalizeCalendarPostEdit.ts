@@ -31,6 +31,13 @@ export const platformOptions = [
   { value: "twitter", label: "X / Twitter" },
 ] as const;
 
+export const postFormatOptions = [
+  { value: "single", label: "Single image" },
+  { value: "carousel", label: "Carousel" },
+  { value: "story", label: "Story" },
+  { value: "reels", label: "Reels / Video" },
+] as const;
+
 export const autopilotRoleOptions = [
   { value: "launch", label: "Launch" },
   { value: "feature", label: "Feature" },

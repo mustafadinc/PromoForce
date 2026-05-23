@@ -1,6 +1,8 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { Plus, Trash2, UploadCloud } from "lucide-react";
+import type { SetupDraft } from "@/components/SetupPreviewPanel";
 import {
   calendarDurationOptions,
   campaignTypeOptions,
@@ -22,6 +24,7 @@ type AppSetupFormProps = {
     screenshots: UploadedScreenshot[],
     autopilotConfig?: AutopilotConfig,
   ) => void;
+  onDraftChange?: (draft: SetupDraft) => void;
   submitLabel: string;
   workspaceProfile?: AppProfile | null;
 };
@@ -40,15 +43,18 @@ export function AppSetupForm({
   isBusy,
   initialScreenshots = [],
   onSubmit,
+  onDraftChange,
   submitLabel,
   workspaceProfile,
 }: AppSetupFormProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [campaignType, setCampaignType] = useState<CampaignType>("app_store");
   const [profile, setProfile] = useState<AppProfile>(initialProfile);
   const [screenshots, setScreenshots] = useState<UploadedScreenshot[]>(initialScreenshots);
   const [uploadError, setUploadError] = useState("");
   const [duration, setDuration] = useState<AutopilotConfig["duration"]>(7);
   const [startDate, setStartDate] = useState(defaultStartDate);
+  const isAutopilot = campaignType === "marketing_autopilot";
 
   useEffect(() => {
     if (workspaceProfile) {
@@ -60,8 +66,14 @@ export function AppSetupForm({
     setScreenshots(initialScreenshots);
   }, [initialScreenshots]);
 
-  const selectedCampaign = campaignTypeOptions.find((option) => option.value === campaignType);
-  const isAutopilot = campaignType === "marketing_autopilot";
+  useEffect(() => {
+    onDraftChange?.({
+      campaignType,
+      profile,
+      screenshots,
+      autopilotConfig: isAutopilot ? { duration, startDate } : undefined,
+    });
+  }, [campaignType, profile, screenshots, duration, startDate, isAutopilot, onDraftChange]);
 
   const updateProfile = <Field extends keyof AppProfile>(field: Field, value: AppProfile[Field]) => {
     setProfile((current) => ({ ...current, [field]: value }));
@@ -133,162 +145,169 @@ export function AppSetupForm({
   };
 
   return (
-    <aside className="panel input-panel">
-      <div className="brand-row">
-        <div className="brand-mark">PF</div>
-        <div>
-          <p className="eyebrow">PromoForce</p>
-          <h1>{selectedCampaign?.label || "Campaign"}</h1>
+    <aside className="pf-setup-panel">
+      <div className="pf-setup-panel-inner">
+        <div className="pf-setup-intro">
+          <h2>Campaign Type</h2>
+          <p>Choose App Store packaging, social launch assets, or an autopilot calendar.</p>
         </div>
-      </div>
 
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <fieldset className="campaign-type-fieldset">
-          <legend>Campaign type</legend>
-          <div className="campaign-type-grid">
-            {campaignTypeOptions.map((option) => (
-              <label
-                key={option.value}
-                className={`campaign-type-option ${campaignType === option.value ? "is-selected" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="campaignType"
-                  value={option.value}
-                  checked={campaignType === option.value}
-                  onChange={() => setCampaignType(option.value)}
-                />
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        {isAutopilot ? (
-          <div className="autopilot-setup-grid">
-            <label className="field">
-              <span>Calendar length</span>
-              <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 7 | 30)}>
-                {calendarDurationOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Start date</span>
-              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
-            </label>
-          </div>
-        ) : null}
-
-        {isAutopilot ? (
-          <p className="strategy-note">
-            AI will act as your marketing director — planning daily posts, deciding when to use screenshots, and keeping
-            brand consistency across the calendar.
-          </p>
-        ) : null}
-
-        <label className="field">
-          <span>App Name</span>
-          <input
-            name="appName"
-            onChange={(event) => updateProfile("appName", event.target.value)}
-            placeholder="PulseTrack"
-            required
-            type="text"
-            value={profile.appName}
-          />
-        </label>
-
-        <label className="field">
-          <span>Category</span>
-          <input
-            name="category"
-            onChange={(event) => updateProfile("category", event.target.value)}
-            placeholder="Productivity"
-            required
-            type="text"
-            value={profile.category}
-          />
-        </label>
-
-        <label className="field">
-          <span>Short Description</span>
-          <textarea
-            name="description"
-            onChange={(event) => updateProfile("description", event.target.value)}
-            placeholder="A calm daily planner that turns busy days into focused action."
-            required
-            rows={3}
-            value={profile.description}
-          />
-        </label>
-
-        <label className="field">
-          <span>Target Audience</span>
-          <input
-            name="targetAudience"
-            onChange={(event) => updateProfile("targetAudience", event.target.value)}
-            placeholder="Busy founders and solo builders"
-            type="text"
-            value={profile.targetAudience}
-          />
-        </label>
-
-        <label
-          className={`upload-zone ${screenshots.length ? "has-image" : ""}`}
-          htmlFor="screenshots"
-        >
-          <input
-            id="screenshots"
-            name="screenshots"
-            onChange={handleScreenshotChange}
-            type="file"
-            accept="image/*"
-            multiple
-            disabled={screenshots.length >= MAX_SCREENSHOTS}
-          />
-          <span className="upload-icon" aria-hidden="true">
-            +
-          </span>
-          <strong>{screenshots.length ? "Add another screenshot" : "Upload app screenshots"}</strong>
-          <small>
-            {screenshots.length
-              ? `${screenshots.length}/${MAX_SCREENSHOTS} added. PNG, JPG or WebP.`
-              : `1–${MAX_SCREENSHOTS} screens. PNG, JPG or WebP.`}
-          </small>
-        </label>
-
-        {screenshots.length ? (
-          <div className="screenshot-grid">
-            {screenshots.map((screenshot) => (
-              <figure key={screenshot.index} className="screenshot-thumb">
-                <button
-                  className="screenshot-remove"
-                  type="button"
-                  aria-label={`Remove screen ${screenshot.index + 1}`}
-                  onClick={() => removeScreenshot(screenshot.index)}
+        <form className="form-stack pf-setup-form" method="post" action="/" onSubmit={handleSubmit}>
+          <fieldset className="campaign-type-fieldset">
+            <legend>Campaign type</legend>
+            <div className="campaign-type-grid">
+              {campaignTypeOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={`campaign-type-option ${campaignType === option.value ? "is-selected" : ""}`}
                 >
-                  ×
+                  <input
+                    type="radio"
+                    name="campaignType"
+                    value={option.value}
+                    checked={campaignType === option.value}
+                    onChange={() => setCampaignType(option.value)}
+                  />
+                  <strong>{option.label}</strong>
+                  <small>{option.description}</small>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {isAutopilot ? (
+            <div className="autopilot-setup-grid">
+              <label className="field">
+                <span>Calendar length</span>
+                <select value={duration} onChange={(event) => setDuration(Number(event.target.value) as 7 | 30)}>
+                  {calendarDurationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Start date</span>
+                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
+              </label>
+            </div>
+          ) : null}
+
+          {isAutopilot ? (
+            <p className="strategy-note">
+              AI will act as your marketing director — planning daily posts, deciding when to use screenshots, and keeping
+              brand consistency across the calendar.
+            </p>
+          ) : null}
+
+          <label className="field">
+            <span>App Name</span>
+            <input
+              name="appName"
+              onChange={(event) => updateProfile("appName", event.target.value)}
+              placeholder="PulseTrack"
+              required
+              type="text"
+              value={profile.appName}
+            />
+          </label>
+
+          <label className="field">
+            <span>Category</span>
+            <input
+              name="category"
+              onChange={(event) => updateProfile("category", event.target.value)}
+              placeholder="Productivity"
+              required
+              type="text"
+              value={profile.category}
+            />
+          </label>
+
+          <label className="field">
+            <span>Short Description</span>
+            <textarea
+              name="description"
+              onChange={(event) => updateProfile("description", event.target.value)}
+              placeholder="A calm daily planner that turns busy days into focused action."
+              required
+              rows={3}
+              value={profile.description}
+            />
+          </label>
+
+          <label className="field">
+            <span>Target Audience</span>
+            <input
+              name="targetAudience"
+              onChange={(event) => updateProfile("targetAudience", event.target.value)}
+              placeholder="Busy founders and solo builders"
+              type="text"
+              value={profile.targetAudience}
+            />
+          </label>
+
+          <div className="pf-upload-block">
+            <span className="field-label">App Screenshots</span>
+            <button
+              type="button"
+              className="pf-upload-zone"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={screenshots.length >= MAX_SCREENSHOTS}
+            >
+              <UploadCloud aria-hidden="true" />
+              <strong>{screenshots.length ? "Add another screenshot" : "Drag or select screenshot files"}</strong>
+              <small>
+                {screenshots.length
+                  ? `${screenshots.length}/${MAX_SCREENSHOTS} added. PNG, JPG or WebP.`
+                  : `1–${MAX_SCREENSHOTS} screens. PNG, JPG or WebP.`}
+              </small>
+            </button>
+
+            <input
+              ref={fileInputRef}
+              id="screenshots"
+              name="screenshots"
+              onChange={handleScreenshotChange}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+            />
+
+            <div className="pf-screenshot-grid">
+              {screenshots.map((screenshot) => (
+                <figure key={screenshot.index} className="pf-screenshot-thumb">
+                  <button
+                    className="screenshot-remove"
+                    type="button"
+                    aria-label={`Remove screen ${screenshot.index + 1}`}
+                    onClick={() => removeScreenshot(screenshot.index)}
+                  >
+                    <Trash2 aria-hidden="true" />
+                  </button>
+                  <img src={screenshot.previewUrl} alt={`App screen ${screenshot.index + 1}`} />
+                  <figcaption>Screen {screenshot.index + 1}</figcaption>
+                </figure>
+              ))}
+              {screenshots.length < MAX_SCREENSHOTS ? (
+                <button type="button" className="pf-screenshot-add" onClick={() => fileInputRef.current?.click()}>
+                  <Plus aria-hidden="true" />
+                  <span>Add</span>
                 </button>
-                <img src={screenshot.previewUrl} alt={`App screen ${screenshot.index + 1}`} />
-                <figcaption>Screen {screenshot.index + 1}</figcaption>
-              </figure>
-            ))}
+              ) : null}
+            </div>
           </div>
-        ) : null}
 
-        {uploadError ? <p className="error-message">{uploadError}</p> : null}
+          {uploadError ? <p className="error-message">{uploadError}</p> : null}
+          {errorMessage ? <p className="error-message">{errorMessage}</p> : null}
 
-        {errorMessage ? <p className="error-message">{errorMessage}</p> : null}
-
-        <button className="primary-action" type="submit" disabled={isBusy}>
-          {submitLabel}
-        </button>
-      </form>
+          <button className="primary-action pf-setup-submit" type="submit" disabled={isBusy}>
+            {submitLabel}
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

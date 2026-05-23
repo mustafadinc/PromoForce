@@ -32,7 +32,7 @@ export function PromoForm({
         </div>
       </div>
 
-      <form className="form-stack" onSubmit={onSubmit}>
+      <form className="form-stack" method="post" action="/" onSubmit={onSubmit}>
         <label className="field">
           <span>App Name</span>
           <input
