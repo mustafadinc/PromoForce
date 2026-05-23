@@ -30,16 +30,16 @@ const BOTTOM_SAFE_MARGIN = 64;
 const MIN_PHONE_W_RATIO = 0.5;
 const FRAME_ASPECT = DEVICE_FRAME_HEIGHT / DEVICE_FRAME_WIDTH;
 
-/** Bottom feature pills — reference px at 1280×2784 (≈ subheadline scale on hero slides). */
+/** Bottom feature pills — reference px at 1280×2784. Equal-width row, short labels. */
 const FEATURE_PILL = {
-  height: 118,
-  fontSize: 44,
-  bottomPad: 76,
-  gap: 22,
-  radius: 30,
-  dotRadius: 10,
-  textInset: 52,
-  barWidthRatio: 0.92,
+  height: 72,
+  fontSize: 28,
+  bottomPad: 56,
+  gap: 14,
+  radius: 22,
+  sideMarginRatio: 0.055,
+  maxWords: 2,
+  maxChars: 15,
 } as const;
 
 function canvasScale(width: number, height: number) {
@@ -50,7 +50,7 @@ function canvasScale(width: number, height: number) {
 
 function featurePillReserveHeight(width: number, height: number) {
   const scale = canvasScale(width, height);
-  return Math.round((FEATURE_PILL.bottomPad + FEATURE_PILL.height + 36) * scale);
+  return Math.round((FEATURE_PILL.bottomPad + FEATURE_PILL.height + 28) * scale);
 }
 
 export { computeLockedTypographyFromHeadline };
@@ -231,50 +231,83 @@ function estimateBrandingLabelWidth(label: string, fontSize: number) {
 function estimatePillTextWidth(text: string, fontSize: number) {
   let width = 0;
   for (const char of text) {
-    width += char === " " ? fontSize * 0.34 : fontSize * 0.54;
+    width += char === " " ? fontSize * 0.36 : fontSize * 0.58;
   }
   return width;
 }
 
-function fitPillFontSize(label: string, maxTextWidth: number, preferred: number) {
-  const min = Math.round(preferred * 0.68);
+function shortenPillLabel(label: string) {
+  const clean = label.trim().replace(/\s+/g, " ");
+  if (!clean) return "";
+
+  const words = clean.split(" ");
+  const twoWords = words.slice(0, FEATURE_PILL.maxWords).join(" ");
+  if (twoWords.length <= FEATURE_PILL.maxChars) {
+    return twoWords.toUpperCase();
+  }
+
+  const firstWord = words[0] || clean;
+  if (firstWord.length <= FEATURE_PILL.maxChars) {
+    return firstWord.toUpperCase();
+  }
+
+  return clean.slice(0, FEATURE_PILL.maxChars).trimEnd().toUpperCase();
+}
+
+function fitPillFontSize(labels: string[], maxTextWidth: number, preferred: number) {
+  const min = Math.round(preferred * 0.78);
   let size = preferred;
   while (size >= min) {
-    if (estimatePillTextWidth(label, size) <= maxTextWidth) return size;
-    size -= 2;
+    if (labels.every((label) => estimatePillTextWidth(label, size) <= maxTextWidth)) {
+      return size;
+    }
+    size -= 1;
   }
   return min;
 }
 
 function buildFeaturePillsSvg(labels: string[], accentColor: string, width: number, height: number) {
-  if (labels.length < 2) return "";
+  if (labels.length < 2) return { defs: "", markup: "" };
 
   const scale = canvasScale(width, height);
   const pillCount = Math.min(labels.length, 3);
+  const pillLabels = labels.slice(0, pillCount).map(shortenPillLabel).filter(Boolean);
+  if (pillLabels.length < 2) return { defs: "", markup: "" };
+
+  const sideMargin = Math.round(width * FEATURE_PILL.sideMarginRatio);
   const pillGap = Math.round(FEATURE_PILL.gap * scale);
-  const pillW = Math.round((width * FEATURE_PILL.barWidthRatio) / pillCount - pillGap);
+  const rowW = width - sideMargin * 2;
+  const pillW = Math.floor((rowW - pillGap * (pillLabels.length - 1)) / pillLabels.length);
   const pillH = Math.round(FEATURE_PILL.height * scale);
   const pillBottom = Math.round(FEATURE_PILL.bottomPad * scale);
   const pillY = height - pillBottom - pillH;
-  const startX = (width - (pillW * pillCount + pillGap * (pillCount - 1))) / 2;
-  const preferredFontSize = Math.round(FEATURE_PILL.fontSize * scale);
   const radius = Math.round(FEATURE_PILL.radius * scale);
-  const dotR = Math.round(FEATURE_PILL.dotRadius * scale);
-  const textPadX = Math.round(FEATURE_PILL.textInset * scale);
-  const strokeW = Math.max(2, Math.round(2 * scale));
-  const maxTextWidth = pillW - textPadX - Math.round(12 * scale);
+  const strokeW = Math.max(1.5, Math.round(1.5 * scale));
+  const dotR = Math.round(5 * scale);
+  const dotGap = Math.round(10 * scale);
+  const textPad = Math.round(16 * scale);
+  const preferredFontSize = Math.round(FEATURE_PILL.fontSize * scale);
+  const fontSize = fitPillFontSize(pillLabels, pillW - textPad * 2 - dotR * 2 - dotGap, preferredFontSize);
 
-  return labels
-    .slice(0, pillCount)
-    .map((label, index) => {
-      const x = startX + index * (pillW + pillGap);
-      const fontSize = fitPillFontSize(label, maxTextWidth, preferredFontSize);
-      return `
-    <rect x="${x}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${radius}" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.22)" stroke-width="${strokeW}"/>
-    <circle cx="${x + textPadX * 0.55}" cy="${pillY + pillH / 2}" r="${dotR}" fill="${accentColor}"/>
-    <text x="${x + textPadX}" y="${pillY + pillH / 2 + fontSize * 0.36}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="800" font-size="${fontSize}" fill="#ffffff">${escapeXml(label)}</text>`;
+  let x = sideMargin;
+
+  const markup = pillLabels
+    .map((label) => {
+      const textW = estimatePillTextWidth(label, fontSize);
+      const contentW = dotR * 2 + dotGap + textW;
+      const contentStart = x + (pillW - contentW) / 2;
+      const dotCx = contentStart + dotR;
+      const textX = contentStart + dotR * 2 + dotGap;
+      const block = `
+  <rect x="${x}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${radius}" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.16)" stroke-width="${strokeW}"/>
+  <circle cx="${dotCx}" cy="${pillY + pillH / 2}" r="${dotR}" fill="${accentColor}"/>
+  <text x="${textX}" y="${pillY + pillH / 2 + fontSize * 0.35}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="700" font-size="${fontSize}" fill="#f0f3f8">${escapeXml(label)}</text>`;
+      x += pillW + pillGap;
+      return block;
     })
     .join("");
+
+  return { defs: "", markup };
 }
 
 async function buildTextOverlaySvg(input: {
@@ -331,6 +364,10 @@ async function buildTextOverlaySvg(input: {
     featureHighlights.length >= 2 &&
     !isCta;
 
+  const featurePills = usePills
+    ? buildFeaturePillsSvg(featureHighlights, accentColor, width, height)
+    : { defs: "", markup: "" };
+
   let y = layout.textTopY;
 
   const verbElements = layout.verbLines
@@ -378,13 +415,14 @@ async function buildTextOverlaySvg(input: {
     <filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
     </filter>
+    ${featurePills.defs}
   </defs>
   <rect x="0" y="0" width="${width}" height="${layout.fadeHeight}" fill="url(#textFade)"/>
   ${useBranding ? buildBrandingBarSvg(appName!, accentColor, width, scale) : ""}
   ${verbElements}
   ${descriptorElements}
   <text filter="url(#textShadow)" text-anchor="middle" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="700" font-size="${layout.subSize}" fill="#f0f3f8">${subTspans}</text>
-  ${usePills ? buildFeaturePillsSvg(featureHighlights, accentColor, width, height) : ""}
+  ${featurePills.markup}
 </svg>`),
     textBlockBottom: layout.textBlockBottom,
   };

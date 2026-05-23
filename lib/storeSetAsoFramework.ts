@@ -122,7 +122,7 @@ export function buildAsoStrategyPromptBlock(profile: AppProfile, screenshotCount
     "- Reuse backgrounds when slides tell one story (e.g. slides 2–3 same photoshoot). Use a NEW scene when mood must shift (e.g. slide 4 calmer proof).",
     "- backgroundRationale: one sentence explaining WHY you chose this treatment and reuse plan.",
     "- headlineAccent: pick 1–3 words from headline for gradient highlight.",
-    "- featureHighlights: hook slide only — 2–3 core value props as bottom pills.",
+    "- featureHighlights: hook slide only — 2–3 short value props (1–2 words each, e.g. App Blocking, AI Coach, Focus Timer).",
     "Match screens to messages from uploaded images.",
   ].join("\n");
 }
