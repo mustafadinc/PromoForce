@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Copy, Download, Sparkles } from "lucide-react";
 
 import type { GeneratedSlide, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
+import { getBeatForSlide, storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 import {
 
@@ -56,10 +57,6 @@ type StoreSlideExportCardProps = {
 
 
 
-const SLIDE_LABELS = ["Hero", "Analytics", "Social", "Devices", "CTA"];
-
-
-
 export function StoreSlideExportCard({
 
   slide,
@@ -82,7 +79,8 @@ export function StoreSlideExportCard({
 
 }: StoreSlideExportCardProps) {
 
-  const slideLabel = SLIDE_LABELS[slide.slideNumber - 1] || `Slide ${slide.slideNumber}`;
+  const beat = slide.asoBeat ?? getBeatForSlide(slide.slideNumber);
+  const slideLabel = storeSlideBeatMeta[beat].label;
 
   const [mockupColor, setMockupColor] = useState<MockupFrameColor>(
 

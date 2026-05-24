@@ -4,6 +4,7 @@ import type {
   CalendarPostPlan,
   CampaignPhase,
   PostFormat,
+  SocialPlatform,
   VisualTemplateId,
   VideoTemplateId,
 } from "@/lib/campaignTypes";
@@ -113,7 +114,7 @@ function normalizePosts(
   screenshotCount: number,
   phases: CampaignPhase[],
 ): CalendarPostPlan[] {
-  const platforms = ["instagram_feed", "instagram_story", "twitter"] as const;
+  const platforms: SocialPlatform[] = ["instagram_feed", "instagram_story", "instagram_reels", "twitter"];
   const posts: CalendarPostPlan[] = [];
 
   for (let day = 1; day <= duration; day++) {

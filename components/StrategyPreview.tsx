@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { NarrativeProgressBar } from "@/components/NarrativeProgressBar";
+import { ScreenshotIntelligencePanel } from "@/components/ScreenshotIntelligencePanel";
+import { SetOverviewPanel } from "@/components/SetOverviewPanel";
 import { StoreSlideEditor } from "@/components/StoreSlideEditor";
 import { StrategyCarousel, type CarouselStep } from "@/components/StrategyCarousel";
 import { StrategyToolbar } from "@/components/StrategyToolbar";
@@ -20,6 +23,7 @@ import {
 } from "@/lib/storeCreativeDirector";
 import type { AppProfile } from "@/lib/campaignTypes";
 import { lintScreenshotAspects } from "@/lib/screenshotAspectLint";
+import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 import {
   assignSlideToBackgroundScene,
   sceneSharesSlide,
@@ -94,13 +98,35 @@ export function StrategyPreview({
       { id: "brief", label: "Campaign setup", subtitle: "Positioning & set mode" },
       ...strategy.slides.map((slide) => ({
         id: `slide-${slide.slideNumber}`,
-        label: `Slide ${slide.slideNumber}`,
+        label: storeSlideBeatMeta[slide.asoBeat].label,
         subtitle: slide.headline.slice(0, 40),
       })),
     ];
   }, [strategy]);
 
   const aspectIssues = useMemo(() => lintScreenshotAspects(screenshotPreviews), [screenshotPreviews]);
+
+  const hasRetakeScreenshots =
+    strategy?.screenshotAssessments?.some((assessment) => assessment.rating === "retake") ?? false;
+
+  const requestGenerate = (options?: { variantsPerSlide?: number }) => {
+    if (hasRetakeScreenshots || aspectIssues.length) {
+      const reasons: string[] = [];
+      if (hasRetakeScreenshots) {
+        reasons.push("Some screenshots are rated Retake.");
+      }
+      if (aspectIssues.length) {
+        reasons.push(`${aspectIssues.length} screenshot(s) have non–App Store aspect.`);
+      }
+      const ok = window.confirm(`${reasons.join(" ")}\n\nGenerate anyway?`);
+      if (!ok) return;
+    }
+    onGenerate(options);
+  };
+
+  const goToSlide = (slideNumber: number) => {
+    setStepIndex(slideNumber);
+  };
 
   if (!strategy) {
     return (
@@ -153,8 +179,6 @@ export function StrategyPreview({
     onStrategyChange({ ...strategy, backgroundScenes, slides });
   };
 
-  const hasRetakeScreenshots = strategy.screenshotAssessments?.some((a) => a.rating === "retake");
-
   const updateSlide = (slideNumber: number, patch: Partial<StoreSlidePlan>) => {
     onStrategyChange(updateSlideInStrategy(strategy, slideNumber, patch, screenshotCount));
   };
@@ -185,7 +209,7 @@ export function StrategyPreview({
             <button
               className="primary-action compact-action"
               type="button"
-              onClick={() => onGenerate({ variantsPerSlide: 1 })}
+              onClick={() => requestGenerate({ variantsPerSlide: 1 })}
               disabled={isGenerating}
             >
               {isGenerating ? "Generating..." : "Generate 5 Slides"}
@@ -193,7 +217,7 @@ export function StrategyPreview({
             <button
               className="secondary-action compact-action"
               type="button"
-              onClick={() => onGenerate({ variantsPerSlide: 3 })}
+              onClick={() => requestGenerate({ variantsPerSlide: 3 })}
               disabled={isGenerating}
               title="3 variants per slide — higher API usage"
             >
@@ -203,9 +227,29 @@ export function StrategyPreview({
         }
       />
 
+      <NarrativeProgressBar
+        narrativeArc={isBriefStep ? strategy.narrativeArc : undefined}
+        activeSlideNumber={isBriefStep ? null : activeSlide?.slideNumber ?? null}
+        onSelectSlide={goToSlide}
+      />
+
       <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>
         {isBriefStep ? (
           <div className="pf-carousel-step">
+      <SetOverviewPanel
+        slides={strategy.slides}
+        screenshotAssessments={strategy.screenshotAssessments}
+        screenshotPreviews={screenshotPreviews}
+        onSelectSlide={goToSlide}
+      />
+
+      {strategy.screenshotIntelligence?.length ? (
+        <ScreenshotIntelligencePanel
+          intelligence={strategy.screenshotIntelligence}
+          screenshotPreviews={screenshotPreviews}
+        />
+      ) : null}
+
       {hasRetakeScreenshots ? (
         <p className="strategy-warning">
           Some uploaded screenshots are rated <strong>Retake</strong>. Generation will continue, but consider
@@ -317,12 +361,6 @@ export function StrategyPreview({
           </div>
         </div>
         </details>
-      ) : null}
-
-      {strategy.narrativeArc ? (
-        <p className="strategy-narrative">
-          <strong>Story arc:</strong> {strategy.narrativeArc}
-        </p>
       ) : null}
 
       <details className="pf-brief-panel" open>

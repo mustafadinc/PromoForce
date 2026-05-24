@@ -1,24 +1,20 @@
 import { applyScreenshotColorHarmonyToSocialBrief } from "@/lib/applyScreenshotColorHarmony";
-import { buildCopyVariants, ensureCopyVariants } from "@/lib/copyVariants";
-import { coerceStrategyText } from "@/lib/strategyText";
 import {
-  SOCIAL_ASSET_COUNT,
+  buildFallbackSocialStrategy,
+  normalizeSocialAsset,
+  normalizeSocialStrategyBrief,
+} from "@/lib/socialStrategyNormalize";
+import type { StrategyImageInput } from "@/lib/strategyImageUtils";
+import {
   type AppProfile,
-  type ImageSize,
   type ScreenshotColorProfile,
-  type SocialAssetPlan,
-  type SocialAssetRole,
-  type SocialPlatform,
+  type ScreenshotIntelligence,
   type SocialStrategyBrief,
-  type ScreenshotUsage,
-  socialPlatformMeta,
 } from "@/lib/campaignTypes";
-
-type StrategyImageInput = {
-  index: number;
-  mimeType: string;
-  base64: string;
-};
+import {
+  attachScreenshotIntelligence,
+  formatScreenshotIntelligenceForPrompt,
+} from "@/lib/screenshotIntelligenceFormat";
 
 function getOpenAIKey() {
   const apiKey = process.env.OPENAI_API_KEY || process.env.AI_PROVIDER_API_KEY;
@@ -28,146 +24,12 @@ function getOpenAIKey() {
   return apiKey;
 }
 
-function buildFallbackSocialStrategy(profile: AppProfile, screenshotCount: number): SocialStrategyBrief {
-  const rawAssets = [
-    {
-      assetNumber: 1,
-      platform: "instagram_feed" as const,
-      role: "launch" as const,
-      headline: profile.appName,
-      subheadline: profile.description,
-      hook: `Introducing ${profile.appName} 🚀`,
-      caption: `${profile.description} Built for ${profile.targetAudience || "mobile users"}.`,
-      hashtags: [profile.appName.replace(/\s+/g, ""), profile.category.replace(/\s+/g, ""), "AppLaunch", "IndieApp"],
-      screenshotIndex: screenshotCount > 0 ? 0 : null,
-      screenshotUsage: (screenshotCount > 0 ? "hero_mockup" : "none") as ScreenshotUsage,
-      visualStyle: "Bold launch post with app mockup and clean typography.",
-      imageSize: socialPlatformMeta.instagram_feed.imageSize,
-    },
-    {
-      assetNumber: 2,
-      platform: "instagram_story" as const,
-      role: "feature" as const,
-      headline: "See it in action",
-      subheadline: profile.description.slice(0, 120),
-      hook: "Swipe up to try it 👆",
-      caption: `Here's what ${profile.appName} looks like in action.`,
-      hashtags: ["AppDemo", "MobileApp"],
-      screenshotIndex: screenshotCount > 1 ? 1 : screenshotCount > 0 ? 0 : null,
-      screenshotUsage: (screenshotCount > 0 ? "feature_mockup" : "none") as ScreenshotUsage,
-      visualStyle: "Vertical story layout with immersive product focus.",
-      imageSize: socialPlatformMeta.instagram_story.imageSize,
-    },
-    {
-      assetNumber: 3,
-      platform: "twitter" as const,
-      role: "engagement" as const,
-      headline: profile.appName,
-      subheadline: "Now available",
-      hook: `We just launched ${profile.appName}.`,
-      caption: `${profile.description} Would love your feedback.`,
-      hashtags: ["BuildInPublic", "AppLaunch"],
-      screenshotIndex: null,
-      screenshotUsage: "none" as const,
-      visualStyle: "Wide announcement card with strong headline and minimal copy.",
-      imageSize: socialPlatformMeta.twitter.imageSize,
-    },
-  ];
-
-  const assets: SocialAssetPlan[] = rawAssets.map((asset) =>
-    ensureCopyVariants({ ...asset, selectedVariantId: "A" }),
-  );
-
-  return {
-    positioning: `${profile.appName} — ${profile.description}`,
-    primaryMessage: profile.description,
-    targetAudience: profile.targetAudience || "Mobile app users",
-    visualTheme: "Cohesive social launch look with premium gradients and readable type.",
-    assets,
-  };
-}
-
-function normalizeAsset(raw: Partial<SocialAssetPlan>, index: number, screenshotCount: number): SocialAssetPlan {
-  const assetNumber = index + 1;
-  const platform: SocialPlatform =
-    raw.platform === "instagram_feed" || raw.platform === "instagram_story" || raw.platform === "twitter"
-      ? raw.platform
-      : (["instagram_feed", "instagram_story", "twitter"] as const)[index];
-
-  const role: SocialAssetRole =
-    raw.role === "launch" || raw.role === "feature" || raw.role === "engagement" ? raw.role : "launch";
-
-  const screenshotUsage: ScreenshotUsage =
-    raw.screenshotUsage === "hero_mockup" ||
-    raw.screenshotUsage === "feature_mockup" ||
-    raw.screenshotUsage === "none"
-      ? raw.screenshotUsage
-      : platform === "twitter"
-        ? "none"
-        : "hero_mockup";
-
-  let screenshotIndex: number | null =
-    typeof raw.screenshotIndex === "number" ? raw.screenshotIndex : screenshotUsage === "none" ? null : 0;
-
-  if (screenshotUsage === "none" || screenshotCount === 0) {
-    screenshotIndex = null;
-  } else if (screenshotIndex !== null) {
-    screenshotIndex = Math.min(Math.max(screenshotIndex, 0), screenshotCount - 1);
-  }
-
-  const hashtags = Array.isArray(raw.hashtags)
-    ? raw.hashtags.map((tag) => String(tag).replace(/^#/, "").trim()).filter(Boolean).slice(0, 8)
-    : [];
-
-  return ensureCopyVariants({
-    assetNumber,
-    platform,
-    role,
-    headline: String(raw.headline || `Asset ${assetNumber}`).trim(),
-    subheadline: String(raw.subheadline || "").trim(),
-    hook: String(raw.hook || "").trim(),
-    caption: String(raw.caption || "").trim(),
-    hashtags,
-    screenshotIndex,
-    screenshotUsage,
-    visualStyle: String(raw.visualStyle || "Premium social marketing layout.").trim(),
-    imageSize: socialPlatformMeta[platform].imageSize,
-    copyVariants: buildCopyVariants(
-      String(raw.hook || "").trim(),
-      String(raw.caption || "").trim(),
-      hashtags,
-      (raw as { copyVariantB?: { hook?: string; caption?: string; hashtags?: string[] } }).copyVariantB,
-    ),
-    selectedVariantId: "A",
-  });
-}
-
-function normalizeSocialStrategyBrief(
-  raw: Partial<SocialStrategyBrief>,
-  profile: AppProfile,
-  screenshotCount: number,
-): SocialStrategyBrief {
-  const fallback = buildFallbackSocialStrategy(profile, screenshotCount);
-  const assets = Array.isArray(raw.assets) ? raw.assets.slice(0, SOCIAL_ASSET_COUNT) : [];
-
-  while (assets.length < SOCIAL_ASSET_COUNT) {
-    assets.push(fallback.assets[assets.length]);
-  }
-
-  return {
-    positioning: coerceStrategyText(raw.positioning, fallback.positioning),
-    primaryMessage: coerceStrategyText(raw.primaryMessage, fallback.primaryMessage),
-    targetAudience: coerceStrategyText(raw.targetAudience, fallback.targetAudience),
-    visualTheme: coerceStrategyText(raw.visualTheme, fallback.visualTheme),
-    assets: assets.map((asset, index) => normalizeAsset(asset, index, screenshotCount)),
-  };
-}
-
 export async function generateSocialStrategyBrief(
   profile: AppProfile,
   images: StrategyImageInput[],
   performanceContext = "",
   colorProfile: ScreenshotColorProfile | null = null,
+  screenshotIntelligence: ScreenshotIntelligence[] = [],
 ): Promise<SocialStrategyBrief> {
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
@@ -189,16 +51,21 @@ export async function generateSocialStrategyBrief(
         `- Target audience: ${profile.targetAudience || "Mobile app users"}`,
         `- Uploaded screenshots: ${screenshotCount}`,
         performanceContext,
+        screenshotIntelligence.length
+          ? formatScreenshotIntelligenceForPrompt(profile, screenshotIntelligence)
+          : "",
         "",
         "Return JSON only with keys: positioning, primaryMessage, targetAudience, visualTheme, assets.",
-        "assets must contain exactly 3 items for:",
+        "assets must contain exactly 4 items for:",
         "1) instagram_feed (launch hero, square)",
-        "2) instagram_story (feature/demo, vertical)",
-        "3) twitter (announcement, wide — prefer text-only unless screenshot adds value)",
+        "2) instagram_story (feature/demo, vertical static)",
+        "3) instagram_reels (short-form video reel, vertical — hook-led, uses screenshot as hero frame)",
+        "4) twitter (announcement, wide — prefer text-only unless screenshot adds value)",
         "",
         "Each asset needs: assetNumber, platform, role, headline, subheadline, hook, caption, hashtags, screenshotIndex, screenshotUsage, visualStyle, copyVariantB.",
+        "For instagram_reels also include: format=reels, videoTemplate (screenshot_reel when multiple screens show different features | mood_teaser | kinetic_headline).",
         "copyVariantB: alternate A/B test copy with different hook, caption, hashtags for the same visual.",
-        "platform must be instagram_feed, instagram_story, or twitter.",
+        "platform must be instagram_feed, instagram_story, instagram_reels, or twitter.",
         "role must be launch, feature, or engagement.",
         "screenshotUsage must be hero_mockup, feature_mockup, or none.",
         "screenshotIndex is 0-based and null when screenshotUsage is none.",
@@ -262,20 +129,26 @@ export async function generateSocialStrategyBrief(
       throw new Error("Social strategy model returned empty content.");
     }
 
-    return applyScreenshotColorHarmonyToSocialBrief(
-      normalizeSocialStrategyBrief(JSON.parse(content) as Partial<SocialStrategyBrief>, profile, screenshotCount),
-      colorProfile,
+    return attachScreenshotIntelligence(
+      applyScreenshotColorHarmonyToSocialBrief(
+        normalizeSocialStrategyBrief(JSON.parse(content) as Partial<SocialStrategyBrief>, profile, screenshotCount),
+        colorProfile,
+      ),
+      screenshotIntelligence,
     );
   } catch {
     const fallback = buildFallbackSocialStrategy(profile, screenshotCount);
-    return applyScreenshotColorHarmonyToSocialBrief(
-      {
-        ...fallback,
-        assets: fallback.assets.map((asset, index) => normalizeAsset(asset, index, screenshotCount)),
-      },
-      colorProfile,
+    return attachScreenshotIntelligence(
+      applyScreenshotColorHarmonyToSocialBrief(
+        {
+          ...fallback,
+          assets: fallback.assets.map((asset, index) => normalizeSocialAsset(asset, index, screenshotCount)),
+        },
+        colorProfile,
+      ),
+      screenshotIntelligence,
     );
   }
 }
 
-export { fileToStrategyImage } from "@/lib/agents/strategyAgent";
+export { ensureSocialStrategyBrief } from "@/lib/socialStrategyNormalize";

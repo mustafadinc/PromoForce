@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateSocialStrategyBrief } from "@/lib/agents/socialStrategyAgent";
-import { extractScreenshotColorProfile } from "@/lib/extractScreenshotColorProfile";
-import { prepareStrategyImages } from "@/lib/strategyImageUtils";
+import { buildScreenshotIntelligenceContext } from "@/lib/prepareScreenshotIntelligence";
 import { extractScreenshots, parseAppProfile, validateAppProfile, validateScreenshots } from "@/lib/parseCampaignForm";
 
 export async function POST(request: Request) {
@@ -20,12 +19,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: screenshotError }, { status: 400 });
     }
 
-    const colorProfile = await extractScreenshotColorProfile(screenshots);
-    const images = await prepareStrategyImages(screenshots);
+    const { colorProfile, screenshotIntelligence, images } = await buildScreenshotIntelligenceContext(
+      profile,
+      screenshots,
+    );
     const performanceContext = String(formData.get("performanceContext") || "");
-    const strategy = await generateSocialStrategyBrief(profile, images, performanceContext, colorProfile);
+    const strategy = await generateSocialStrategyBrief(
+      profile,
+      images,
+      performanceContext,
+      colorProfile,
+      screenshotIntelligence,
+    );
 
-    return NextResponse.json({ strategy });
+    return NextResponse.json({ strategy, screenshotIntelligence });
   } catch (error) {
     return NextResponse.json(
       {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, UploadCloud } from "lucide-react";
 import type { SetupDraft } from "@/components/SetupPreviewPanel";
 import {
@@ -13,6 +13,7 @@ import {
   type UploadedScreenshot,
 } from "@/lib/campaignTypes";
 import { buildUploadedScreenshot } from "@/lib/screenshotUpload";
+import { lintScreenshotAspects } from "@/lib/screenshotAspectLint";
 
 type AppSetupFormProps = {
   errorMessage: string;
@@ -74,6 +75,8 @@ export function AppSetupForm({
       autopilotConfig: isAutopilot ? { duration, startDate } : undefined,
     });
   }, [campaignType, profile, screenshots, duration, startDate, isAutopilot, onDraftChange]);
+
+  const aspectIssues = useMemo(() => lintScreenshotAspects(screenshots), [screenshots]);
 
   const updateProfile = <Field extends keyof AppProfile>(field: Field, value: AppProfile[Field]) => {
     setProfile((current) => ({ ...current, [field]: value }));
@@ -298,6 +301,16 @@ export function AppSetupForm({
                 </button>
               ) : null}
             </div>
+            {aspectIssues.length ? (
+              <div className="strategy-warning aspect-warning-panel pf-setup-aspect-warn">
+                <strong>Screenshot aspect</strong>
+                <ul>
+                  {aspectIssues.map((issue) => (
+                    <li key={issue.index}>{issue.message}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
 
           {uploadError ? <p className="error-message">{uploadError}</p> : null}

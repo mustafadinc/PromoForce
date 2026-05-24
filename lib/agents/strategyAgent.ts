@@ -24,6 +24,11 @@ import {
 import type { ScreenshotAssessment, ScreenshotQualityRating } from "@/lib/campaignTypes";
 import { coerceStrategyText } from "@/lib/strategyText";
 import type { StrategyImageInput } from "@/lib/strategyImageUtils";
+import type { ScreenshotIntelligence } from "@/lib/campaignTypes";
+import {
+  attachScreenshotIntelligence,
+  formatScreenshotIntelligenceForPrompt,
+} from "@/lib/screenshotIntelligenceFormat";
 
 export type { StrategyImageInput };
 export { fileToStrategyImage, prepareStrategyImages } from "@/lib/strategyImageUtils";
@@ -193,6 +198,7 @@ export async function generateStrategyBrief(
   profile: AppProfile,
   images: StrategyImageInput[],
   colorProfile: ScreenshotColorProfile | null = null,
+  screenshotIntelligence: ScreenshotIntelligence[] = [],
 ): Promise<StrategyBrief> {
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
@@ -206,6 +212,9 @@ export async function generateStrategyBrief(
       type: "text",
       text: [
         buildAsoStrategyPromptBlock(profile, screenshotCount),
+        screenshotIntelligence.length
+          ? formatScreenshotIntelligenceForPrompt(profile, screenshotIntelligence)
+          : "",
         colorProfile
           ? [
               "",
@@ -273,14 +282,20 @@ export async function generateStrategyBrief(
       throw new Error("Strategy model returned empty content.");
     }
 
-    return applyScreenshotColorHarmonyToStoreBrief(
-      normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
-      colorProfile,
+    return attachScreenshotIntelligence(
+      applyScreenshotColorHarmonyToStoreBrief(
+        normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
+        colorProfile,
+      ),
+      screenshotIntelligence,
     );
   } catch {
-    return applyScreenshotColorHarmonyToStoreBrief(
-      applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
-      colorProfile,
+    return attachScreenshotIntelligence(
+      applyScreenshotColorHarmonyToStoreBrief(
+        applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
+        colorProfile,
+      ),
+      screenshotIntelligence,
     );
   }
 }

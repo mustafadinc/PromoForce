@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { CopyToast } from "@/components/CopyToast";
 import { ExportStatusStrip } from "@/components/ExportStatusStrip";
 import { StoreSlideExportCard } from "@/components/StoreSlideExportCard";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
-import type { GeneratedSlide, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
+import type {
+  GeneratedSlide,
+  StoreSlideRegenerateMode,
+  StoreSlideRegenerateOptions,
+  StrategyBrief,
+} from "@/lib/campaignTypes";
 import { STORE_SLIDE_COUNT } from "@/lib/campaignTypes";
 import { APP_STORE_EXPORT_PRESETS, type AppStoreExportPreset } from "@/lib/appStoreImageSizes";
 import { APP_STORE_EXPORT_HEIGHT, APP_STORE_EXPORT_WIDTH } from "@/lib/appStoreImageSizes";
 import { lintAppStoreSet } from "@/lib/appStoreExportLintClient";
 import { downloadAppStoreZip } from "@/lib/exportAppStoreZip";
+import { scoreGeneratedSlides } from "@/lib/readabilityScore";
+import type { SetCoherenceAudit } from "@/lib/agents/setCoherenceAgent";
 
 type StoreSetGalleryProps = {
   slides: GeneratedSlide[];
+  strategy?: StrategyBrief | null;
   progressLabel: string;
   partialPreviewUrl?: string;
   regeneratingSlideNumber?: number | null;
@@ -31,6 +39,7 @@ type StoreSetGalleryProps = {
 
 export function StoreSetGallery({
   slides,
+  strategy = null,
   progressLabel,
   partialPreviewUrl,
   regeneratingSlideNumber = null,
@@ -44,7 +53,15 @@ export function StoreSetGallery({
   const [lintMessage, setLintMessage] = useState<string | null>(null);
   const [isLinting, setIsLinting] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
+  const [coherenceAudit, setCoherenceAudit] = useState<SetCoherenceAudit | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
+
+  const readability = useMemo(
+    () => (slides.length ? scoreGeneratedSlides(slides) : null),
+    [slides],
+  );
 
   const exportLabel = `${APP_STORE_EXPORT_WIDTH}×${APP_STORE_EXPORT_HEIGHT}`;
   const aspectRatio = `${APP_STORE_EXPORT_WIDTH} / ${APP_STORE_EXPORT_HEIGHT}`;
@@ -96,6 +113,28 @@ export function StoreSetGallery({
     slides.forEach((slide, index) => {
       window.setTimeout(() => downloadSlide(slide), index * 250);
     });
+  };
+
+  const runCoherenceAudit = async () => {
+    if (!strategy) return;
+    setIsAuditing(true);
+    setAuditError(null);
+    try {
+      const response = await fetch("/api/strategy/audit-set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy }),
+      });
+      const payload = (await response.json()) as { audit?: SetCoherenceAudit; error?: string };
+      if (!response.ok || !payload.audit) {
+        throw new Error(payload.error || "Audit failed.");
+      }
+      setCoherenceAudit(payload.audit);
+    } catch (error) {
+      setAuditError(error instanceof Error ? error.message : "Audit failed.");
+    } finally {
+      setIsAuditing(false);
+    }
   };
 
   const handleZipExport = async () => {
@@ -183,7 +222,54 @@ export function StoreSetGallery({
         {lintMessage ? (
           <p className={`export-lint-message pf-export-lint ${isLinting ? "is-pending" : ""}`}>{lintMessage}</p>
         ) : null}
+        {readability ? (
+          <p className="pf-readability-summary">
+            Copy readability: <strong>{readability.overallScore}/100</strong>
+            {readability.issues.length
+              ? ` · ${readability.issues.length} issue${readability.issues.length === 1 ? "" : "s"}`
+              : " · headlines look tight"}
+          </p>
+        ) : null}
       </div>
+
+      {strategy && !isGenerating && slides.length > 0 ? (
+        <div className="pf-coherence-audit-panel">
+          <div className="pf-coherence-audit-header">
+            <span>Set coherence audit</span>
+            <button
+              type="button"
+              className="secondary-action compact-action"
+              onClick={() => void runCoherenceAudit()}
+              disabled={isAuditing}
+            >
+              {isAuditing ? "Auditing…" : coherenceAudit ? "Re-run audit" : "Run AI audit"}
+            </button>
+          </div>
+          {auditError ? <p className="error-message">{auditError}</p> : null}
+          {coherenceAudit ? (
+            <div className="pf-coherence-audit-body">
+              <p>
+                Overall <strong>{coherenceAudit.overallScore}/100</strong> · Narrative{" "}
+                {coherenceAudit.narrativeCohesion} · Copy {coherenceAudit.copyUniqueness}
+              </p>
+              {coherenceAudit.issues.length ? (
+                <ul className="pf-coherence-issues">
+                  {coherenceAudit.issues.map((issue, index) => (
+                    <li key={`${issue.message}-${index}`}>
+                      {issue.slideNumber ? `Slide ${issue.slideNumber}: ` : ""}
+                      {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="pf-coherence-ok">No major coherence issues flagged.</p>
+              )}
+            </div>
+          ) : (
+            <p className="pf-coherence-hint">Check whether headlines tell one conversion story before upload.</p>
+          )}
+        </div>
+      ) : null}
 
       {slides.length > 1 && !isGenerating ? (
         <div className="showcase-strip pf-cohesion-strip">

@@ -1,9 +1,13 @@
-import { auth, signIn } from "@/lib/auth";
+import { auth, isAuthConfigured, signIn } from "@/lib/auth";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function LoginPage() {
+  if (!isAuthConfigured()) {
+    redirect("/");
+  }
+
   const session = await auth();
   if (session?.user) {
     redirect("/");

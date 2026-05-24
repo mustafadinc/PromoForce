@@ -1,25 +1,62 @@
-import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Img, useCurrentFrame } from "remotion";
+import { SegmentLabel, VignetteOverlay } from "../components/CinematicOverlays";
+import {
+  REEL_CROSSFADE_DURATION,
+  REEL_SEGMENT_DURATION,
+  kenBurnsTransform,
+  reelSegmentStart,
+  segmentCrossfadeOpacity,
+  type KenBurnsVariant,
+} from "../lib/motion";
 
-type ScreenshotReelProps = {
+export type ScreenshotReelProps = {
   images: string[];
-  headline: string;
+  labels?: string[];
+  headline?: string;
 };
 
-export const ScreenshotReelComposition: React.FC<ScreenshotReelProps> = ({ images, headline }) => {
+export const ScreenshotReelComposition: React.FC<ScreenshotReelProps> = ({ images, labels, headline }) => {
   const frame = useCurrentFrame();
-  const slideDuration = 48;
-  const index = Math.min(Math.floor(frame / slideDuration), Math.max(images.length - 1, 0));
-  const localFrame = frame - index * slideDuration;
-  const opacity = interpolate(localFrame, [0, 12, slideDuration - 12, slideDuration], [0, 1, 1, 0]);
+  const resolvedLabels =
+    labels && labels.length >= images.length
+      ? labels
+      : images.map((_, index) => labels?.[index] ?? headline ?? "");
 
   return (
-    <AbsoluteFill style={{ backgroundColor: "#050608" }}>
-      <AbsoluteFill style={{ opacity }}>
-        <Img src={images[index] ?? images[0]} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      </AbsoluteFill>
-      <AbsoluteFill style={{ justifyContent: "flex-end", padding: 64 }}>
-        <h2 style={{ color: "#fff", fontSize: 42, fontWeight: 800 }}>{headline}</h2>
-      </AbsoluteFill>
+    <AbsoluteFill style={{ backgroundColor: "#030508" }}>
+      {images.map((src, index) => {
+        const start = reelSegmentStart(index);
+        const end = start + REEL_SEGMENT_DURATION;
+        if (frame < start || frame >= end) return null;
+
+        const localFrame = frame - start;
+        const opacity = segmentCrossfadeOpacity(
+          localFrame,
+          REEL_SEGMENT_DURATION,
+          REEL_CROSSFADE_DURATION,
+          index === 0,
+        );
+        const { scale, x, y } = kenBurnsTransform(
+          localFrame,
+          REEL_SEGMENT_DURATION,
+          (index % 4) as KenBurnsVariant,
+        );
+
+        return (
+          <AbsoluteFill key={`${src.slice(0, 32)}-${index}`} style={{ opacity }}>
+            <AbsoluteFill
+              style={{
+                transform: `scale(${scale}) translate(${x}%, ${y}%)`,
+                transformOrigin: "center center",
+              }}
+            >
+              <Img src={src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </AbsoluteFill>
+            <VignetteOverlay />
+            <SegmentLabel text={resolvedLabels[index] ?? ""} localFrame={localFrame} />
+          </AbsoluteFill>
+        );
+      })}
     </AbsoluteFill>
   );
 };

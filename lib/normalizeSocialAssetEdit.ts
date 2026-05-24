@@ -10,6 +10,13 @@ export function normalizeSocialAssetEdit(
 
   if (patch.platform) {
     next.imageSize = socialPlatformMeta[patch.platform].imageSize;
+    if (patch.platform === "instagram_reels") {
+      next.format = "reels";
+      next.videoTemplate = next.videoTemplate ?? "mood_teaser";
+    } else if (next.format === "reels") {
+      next.format = "single";
+      next.videoTemplate = undefined;
+    }
   }
 
   if (patch.hashtags) {
@@ -31,6 +38,7 @@ export function normalizeSocialAssetEdit(
 export const socialPlatformOptions: Array<{ value: SocialPlatform; label: string; hint: string }> = [
   { value: "instagram_feed", label: "Instagram Feed Post", hint: "Square 1080×1080 image post" },
   { value: "instagram_story", label: "Instagram Story", hint: "Vertical 1080×1920 story frame" },
+  { value: "instagram_reels", label: "Instagram Reels", hint: "Vertical 1080×1920 MP4 video" },
   { value: "twitter", label: "X / Twitter Post", hint: "Wide 1600×900 announcement card" },
 ];
 

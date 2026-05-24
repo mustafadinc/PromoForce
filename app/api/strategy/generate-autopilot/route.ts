@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import type { BrandMemory } from "@/lib/campaignTypes";
 import { applyScreenshotColorHarmonyToAutopilotBrief } from "@/lib/applyScreenshotColorHarmony";
 import { generateAutopilotStrategyBrief } from "@/lib/agents/autopilotStrategyAgent";
-import { extractScreenshotColorProfile } from "@/lib/extractScreenshotColorProfile";
-import { prepareStrategyImages } from "@/lib/strategyImageUtils";
+import { buildScreenshotIntelligenceContext } from "@/lib/prepareScreenshotIntelligence";
 import { extractScreenshots, parseAppProfile, validateAppProfile, validateScreenshots } from "@/lib/parseCampaignForm";
 
 function parseDuration(value: FormDataEntryValue | null) {
@@ -49,8 +48,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: screenshotError }, { status: 400 });
     }
 
-    const colorProfile = await extractScreenshotColorProfile(screenshots);
-    const images = await prepareStrategyImages(screenshots);
+    const { colorProfile, screenshotIntelligence, images } = await buildScreenshotIntelligenceContext(
+      profile,
+      screenshots,
+    );
     const performanceContext = String(formData.get("performanceContext") || "");
     const strategy = applyScreenshotColorHarmonyToAutopilotBrief(
       await generateAutopilotStrategyBrief(
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
         startDate,
         brandMemory,
         performanceContext,
+        screenshotIntelligence,
       ),
       colorProfile,
     );
@@ -87,7 +89,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ strategy, campaignId, postIdsByDay });
+    return NextResponse.json({ strategy, screenshotIntelligence, campaignId, postIdsByDay });
   } catch (error) {
     return NextResponse.json(
       {

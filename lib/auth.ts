@@ -15,6 +15,10 @@ const dbAdapter = isDatabaseConfigured()
   : undefined;
 
 export function isAuthConfigured() {
+  const disabled = process.env.AUTH_DISABLED;
+  if (disabled === "1" || disabled === "true") {
+    return false;
+  }
   return Boolean(process.env.AUTH_SECRET?.trim());
 }
 

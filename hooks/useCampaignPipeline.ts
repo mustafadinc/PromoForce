@@ -27,6 +27,7 @@ import {
 } from "@/lib/brandMemory";
 import { addDaysToDate } from "@/lib/scheduleUtils";
 import { persistCampaignAsset } from "@/lib/client/persistCampaignAsset";
+import { appendProgrammaticVideoFields } from "@/lib/buildProgrammaticVideoForm";
 import { dataUrlToBase64Payload } from "@/lib/compactClientImage";
 import { resolveLockedTypographyForSlide } from "@/lib/resolveLockedTypography";
 import type {
@@ -46,6 +47,8 @@ import type {
   StrategyBrief,
   UploadedScreenshot,
 } from "@/lib/campaignTypes";
+import { isSocialReelsAsset } from "@/lib/campaignTypes";
+import { ensureSocialStrategyBrief } from "@/lib/socialStrategyNormalize";
 
 function jsonEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -104,8 +107,24 @@ export function useCampaignPipeline() {
         setScreenshots(restoredScreenshots);
         setStoreStrategy(session.storeStrategy);
         setAiStoreStrategy(session.aiStoreStrategy);
-        setSocialStrategy(session.socialStrategy);
-        setAiSocialStrategy(session.aiSocialStrategy);
+        setSocialStrategy(
+          session.socialStrategy && session.profile
+            ? ensureSocialStrategyBrief(
+                session.socialStrategy,
+                session.profile,
+                restoredScreenshots.length,
+              )
+            : session.socialStrategy,
+        );
+        setAiSocialStrategy(
+          session.aiSocialStrategy && session.profile
+            ? ensureSocialStrategyBrief(
+                session.aiSocialStrategy,
+                session.profile,
+                restoredScreenshots.length,
+              )
+            : session.aiSocialStrategy,
+        );
         setAutopilotStrategy(session.autopilotStrategy);
         setAiAutopilotStrategy(session.aiAutopilotStrategy);
         setAutopilotCampaignId(session.autopilotCampaignId);
@@ -487,6 +506,7 @@ export function useCampaignPipeline() {
         slides.push({
           slideNumber: slide.slideNumber,
           role: slide.role,
+          asoBeat: slide.asoBeat,
           headline: slide.headline,
           subheadline: slide.subheadline,
           dataUrl: selected.dataUrl,
@@ -651,6 +671,11 @@ export function useCampaignPipeline() {
   const generateSocialPack = async () => {
     if (!profile || !socialStrategy) return;
 
+    const activeStrategy = ensureSocialStrategyBrief(socialStrategy, profile, screenshots.length);
+    if (!jsonEqual(activeStrategy, socialStrategy)) {
+      setSocialStrategy(activeStrategy);
+    }
+
     const signal = beginGeneration();
     setIsGenerating(true);
     setErrorMessage("");
@@ -658,21 +683,22 @@ export function useCampaignPipeline() {
     setStep("gallery");
 
     try {
-      assertCanGenerate(socialStrategy.assets.length);
+      const reelsCount = activeStrategy.assets.filter(isSocialReelsAsset).length;
+      assertCanGenerate(activeStrategy.assets.length + reelsCount);
       const assets: GeneratedSocialAsset[] = [];
 
-      for (const asset of socialStrategy.assets) {
+      for (const asset of activeStrategy.assets) {
         if (signal.aborted) break;
 
         setPartialPreviewUrl("");
         setProgressLabel(
-          `Generating ${asset.platform.replace("_", " ")} (${asset.assetNumber}/${socialStrategy.assets.length})...`,
+          `Generating ${asset.platform.replace("_", " ")} (${asset.assetNumber}/${activeStrategy.assets.length})...`,
         );
 
         const formData = new FormData();
         appendProfileFields(formData);
         appendSlideScreenshot(formData, asset.screenshotIndex);
-        formData.append("strategy", JSON.stringify(socialStrategy));
+        formData.append("strategy", JSON.stringify(activeStrategy));
         formData.append("asset", JSON.stringify(asset));
 
         const response = await fetch("/api/assets/generate-social-asset", { method: "POST", body: formData, signal });
@@ -692,6 +718,40 @@ export function useCampaignPipeline() {
           throw new Error(`Asset ${asset.assetNumber} returned no image.`);
         }
 
+        const dataUrl = await resolveDataUrl(imageSource);
+        let videoDataUrl: string | undefined;
+
+        if (isSocialReelsAsset(asset)) {
+          setProgressLabel(
+            `Rendering Reels video (${asset.assetNumber}/${activeStrategy.assets.length})...`,
+          );
+          const videoTemplate =
+            asset.videoTemplate ?? (screenshots.length >= 2 ? "screenshot_reel" : "mood_teaser");
+          const videoForm = new FormData();
+          await appendProgrammaticVideoFields(videoForm, {
+            screenshots,
+            template: videoTemplate,
+            headline: asset.hook || asset.headline,
+            coverDataUrl: dataUrl,
+            screenshotIntelligence: activeStrategy.screenshotIntelligence,
+            width: 1080,
+            height: 1920,
+            postId: `social-${asset.assetNumber}`,
+          });
+
+          const videoRes = await fetch("/api/assets/generate-video", {
+            method: "POST",
+            body: videoForm,
+            signal,
+          });
+          const videoJson = (await videoRes.json()) as { dataUrl?: string; error?: string };
+          if (!videoRes.ok || !videoJson.dataUrl) {
+            throw new Error(videoJson.error || `Reels video failed for asset ${asset.assetNumber}.`);
+          }
+          videoDataUrl = String(videoJson.dataUrl);
+          bumpUsage(1);
+        }
+
         assets.push({
           assetNumber: asset.assetNumber,
           platform: asset.platform,
@@ -700,10 +760,13 @@ export function useCampaignPipeline() {
           hook: asset.hook,
           caption: asset.caption,
           hashtags: asset.hashtags,
-          dataUrl: await resolveDataUrl(imageSource),
+          dataUrl,
           prompt: String(result.revisedPrompt || result.prompt || ""),
           selectedVariantId: asset.selectedVariantId,
           usedScreenshot: asset.screenshotUsage !== "none",
+          format: asset.format,
+          videoTemplate: asset.videoTemplate,
+          videoDataUrl,
         });
         bumpUsage(1);
         setPartialPreviewUrl("");
@@ -806,13 +869,21 @@ export function useCampaignPipeline() {
 
           if (post.format === "reels" && dataUrl) {
             setProgressLabel(`Day ${post.day}: rendering video (${post.videoTemplate ?? "mood_teaser"})...`);
+            const isTwitter = post.platform === "twitter";
+            const isVertical = post.format === "reels" || post.platform === "instagram_story";
+            const videoTemplate =
+              post.videoTemplate ?? (screenshots.length >= 2 ? "screenshot_reel" : "mood_teaser");
             const videoForm = new FormData();
-            videoForm.append("stillBase64", dataUrl);
-            videoForm.append("headline", post.headline);
-            videoForm.append("template", post.videoTemplate ?? "mood_teaser");
-            videoForm.append("width", post.platform === "twitter" ? "1920" : "1080");
-            videoForm.append("height", post.platform === "instagram_story" ? "1920" : post.platform === "twitter" ? "1080" : "1080");
-            videoForm.append("postId", postIdsByDay[post.day] ?? `day-${post.day}`);
+            await appendProgrammaticVideoFields(videoForm, {
+              screenshots,
+              template: videoTemplate,
+              headline: post.hook || post.headline,
+              coverDataUrl: dataUrl,
+              screenshotIntelligence: autopilotStrategy?.screenshotIntelligence,
+              width: isTwitter ? 1920 : 1080,
+              height: isTwitter ? 1080 : isVertical ? 1920 : 1080,
+              postId: postIdsByDay[post.day] ?? `day-${post.day}`,
+            });
 
             const videoRes = await fetch("/api/assets/generate-video", {
               method: "POST",

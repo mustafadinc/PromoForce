@@ -5,6 +5,7 @@ import {
   type BrandMemory,
   type CalendarDuration,
   type CalendarPostPlan,
+  type ScreenshotIntelligence,
   type ScreenshotUsage,
   type SocialPlatform,
   socialPlatformMeta,
@@ -13,6 +14,10 @@ import { formatBrandMemoryForPrompt } from "@/lib/brandMemory";
 import { buildCopyVariants, ensureCopyVariants } from "@/lib/copyVariants";
 import { fileToStrategyImage } from "@/lib/agents/strategyAgent";
 import { coerceStrategyText } from "@/lib/strategyText";
+import {
+  attachScreenshotIntelligence,
+  formatScreenshotIntelligenceForPrompt,
+} from "@/lib/screenshotIntelligenceFormat";
 
 type StrategyImageInput = {
   index: number;
@@ -250,17 +255,21 @@ export async function generateAutopilotStrategyBrief(
   startDate: string,
   brandMemory: BrandMemory | null,
   performanceContext = "",
+  screenshotIntelligence: ScreenshotIntelligence[] = [],
 ): Promise<AutopilotStrategyBrief> {
   if (process.env.OPENAI_API_KEY || process.env.AI_PROVIDER_API_KEY) {
     try {
       const { generateAutopilotStrategyV2 } = await import("@/lib/agents/generateAutopilotStrategyV2");
-      return await generateAutopilotStrategyV2(
-        profile,
-        duration,
-        startDate,
-        images.length,
-        brandMemory,
-        performanceContext,
+      return attachScreenshotIntelligence(
+        await generateAutopilotStrategyV2(
+          profile,
+          duration,
+          startDate,
+          images.length,
+          brandMemory,
+          performanceContext,
+        ),
+        screenshotIntelligence,
       );
     } catch {
       // Fall through to legacy single-agent path
@@ -290,6 +299,9 @@ export async function generateAutopilotStrategyBrief(
         `- Calendar start date: ${startDate}`,
         memoryBlock,
         performanceContext,
+        screenshotIntelligence.length
+          ? formatScreenshotIntelligenceForPrompt(profile, screenshotIntelligence)
+          : "",
         "",
         "Return JSON only with keys: positioning, primaryMessage, targetAudience, visualTheme, brandVoice, contentPillars, posts.",
         `posts must contain exactly ${duration} items.`,
@@ -349,19 +361,25 @@ export async function generateAutopilotStrategyBrief(
       throw new Error("Autopilot strategy model returned empty content.");
     }
 
-    return normalizeAutopilotBrief(
-      JSON.parse(content) as Partial<AutopilotStrategyBrief>,
-      profile,
-      duration,
-      startDate,
-      screenshotCount,
+    return attachScreenshotIntelligence(
+      normalizeAutopilotBrief(
+        JSON.parse(content) as Partial<AutopilotStrategyBrief>,
+        profile,
+        duration,
+        startDate,
+        screenshotCount,
+      ),
+      screenshotIntelligence,
     );
   } catch {
     const fallback = buildFallbackAutopilotStrategy(profile, duration, startDate, screenshotCount);
-    return {
-      ...fallback,
-      posts: fallback.posts.map((post, index) => normalizePost(post, index, screenshotCount)),
-    };
+    return attachScreenshotIntelligence(
+      {
+        ...fallback,
+        posts: fallback.posts.map((post, index) => normalizePost(post, index, screenshotCount)),
+      },
+      screenshotIntelligence,
+    );
   }
 }
 

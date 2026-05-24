@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Copy } from "lucide-react";
+import { ScreenshotIntelligencePanel } from "@/components/ScreenshotIntelligencePanel";
 import { ScreenshotVisualPanel } from "@/components/ScreenshotVisualPanel";
 import { CopyVariantPicker } from "@/components/CopyVariantPicker";
 import { CopyToast } from "@/components/CopyToast";
@@ -83,7 +84,7 @@ export function SocialStrategyPreview({
       <section className="preview-panel">
         <div className="empty-state standalone-empty">
           <span>Social Pack</span>
-          <p>Upload your app and screenshots. AI will plan Instagram, Story, and X posts with captions.</p>
+          <p>Upload your app and screenshots. AI will plan Feed, Story, Reels, and X posts with captions.</p>
         </div>
       </section>
     );
@@ -158,6 +159,12 @@ export function SocialStrategyPreview({
       <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>
         {isBriefStep ? (
           <div className="pf-carousel-step pf-form-section-grid-single">
+            {strategy.screenshotIntelligence?.length ? (
+              <ScreenshotIntelligencePanel
+                intelligence={strategy.screenshotIntelligence}
+                screenshotPreviews={screenshotPreviews}
+              />
+            ) : null}
             <label className="field">
               <span>Positioning</span>
               <textarea
@@ -190,8 +197,8 @@ export function SocialStrategyPreview({
             <section className="pf-form-section pf-launch-formats">
               <h4 className="pf-form-section-title">Launch pack formats</h4>
               <p className="pf-form-section-hint">
-                Choose where each post goes — Feed post, Story, or X. Reels and carousel sequences are available in
-                Autopilot calendar mode.
+                Four launch assets: Feed, Story, Reels video, and X. Reels exports as a 9:16 MP4 ready for
+                Instagram or TikTok.
               </p>
               <ul className="pf-launch-format-list">
                 {strategy.assets.map((entry, index) => (

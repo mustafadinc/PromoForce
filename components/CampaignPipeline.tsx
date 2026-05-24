@@ -19,7 +19,7 @@ import { stripFormQueryParamsFromUrl } from "@/lib/cleanBrowserUrl";
 import type { AppProfile } from "@/lib/campaignTypes";
 
 const PLANNING_STEPS = [
-  "Analyzing application structure...",
+  "Analyzing uploaded screenshots (features & headlines)...",
   "Scanning design keywords and themes...",
   "Building conversion-focused marketing strategy...",
   "Planning screenshot assignments and backgrounds...",
@@ -183,6 +183,7 @@ export function CampaignPipeline() {
                 hasEdits={hasEdits}
                 errorMessage={errorMessage}
                 screenshotPreviews={screenshotPreviews}
+                screenshotAssessments={isStore ? storeStrategy?.screenshotAssessments : undefined}
                 onNewCampaign={resetCampaign}
                 onNavigate={handleTabChange}
               />
@@ -255,6 +256,7 @@ export function CampaignPipeline() {
                 {isStore ? (
                   <StoreSetGallery
                     slides={generatedSlides}
+                    strategy={storeStrategy}
                     progressLabel={progressLabel}
                     partialPreviewUrl={partialPreviewUrl}
                     regeneratingSlideNumber={regeneratingSlideNumber}

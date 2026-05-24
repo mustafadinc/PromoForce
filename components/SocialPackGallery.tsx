@@ -7,7 +7,8 @@ import { PerformanceFeedback } from "@/components/PerformanceFeedback";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { formatSocialPostCopy, platformLabel } from "@/lib/buildSocialAssetPrompt";
 import type { GeneratedSocialAsset } from "@/lib/campaignTypes";
-import { socialPlatformMeta } from "@/lib/campaignTypes";
+import { isSocialReelsAsset, socialPlatformMeta } from "@/lib/campaignTypes";
+import { downloadDataUrl } from "@/lib/downloadDataUrl";
 
 type SocialPackGalleryProps = {
   appName: string;
@@ -20,16 +21,28 @@ type SocialPackGalleryProps = {
 };
 
 function aspectRatioForPlatform(platform: GeneratedSocialAsset["platform"] | null): string {
-  if (platform === "instagram_story") return "9 / 16";
+  if (platform === "instagram_story" || platform === "instagram_reels") return "9 / 16";
   if (platform === "twitter") return "16 / 9";
   return "1 / 1";
 }
 
 function inferStreamingAspectRatio(progressLabel: string): string {
   const lower = progressLabel.toLowerCase();
-  if (lower.includes("instagram story") || lower.includes("instagram_story")) return "9 / 16";
+  if (
+    lower.includes("instagram story") ||
+    lower.includes("instagram_story") ||
+    lower.includes("instagram reels") ||
+    lower.includes("instagram_reels") ||
+    lower.includes("reels video")
+  ) {
+    return "9 / 16";
+  }
   if (lower.includes("twitter")) return "16 / 9";
   return "1 / 1";
+}
+
+function isReelsAsset(asset: GeneratedSocialAsset): boolean {
+  return isSocialReelsAsset(asset) || Boolean(asset.videoDataUrl);
 }
 
 export function SocialPackGallery({
@@ -44,19 +57,27 @@ export function SocialPackGallery({
   const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
 
   const downloadImage = (asset: GeneratedSocialAsset) => {
-    const link = document.createElement("a");
-    link.href = asset.dataUrl;
-    link.download = `${asset.platform}-promo.png`;
-    link.click();
+    downloadDataUrl(asset.dataUrl, `${asset.platform}-promo.png`);
+  };
+
+  const downloadVideo = (asset: GeneratedSocialAsset) => {
+    if (!asset.videoDataUrl) return;
+    downloadDataUrl(asset.videoDataUrl, `${asset.platform}-promo.mp4`);
   };
 
   const copyPost = async (asset: GeneratedSocialAsset) => {
     await copyText(formatSocialPostCopy(asset), "Caption copied");
   };
 
-  const downloadAllImages = () => {
+  const downloadAllAssets = () => {
     assets.forEach((asset, index) => {
-      window.setTimeout(() => downloadImage(asset), index * 250);
+      window.setTimeout(() => {
+        if (isReelsAsset(asset) && asset.videoDataUrl) {
+          downloadVideo(asset);
+        } else {
+          downloadImage(asset);
+        }
+      }, index * 250);
     });
   };
 
@@ -83,10 +104,10 @@ export function SocialPackGallery({
           <button
             className="secondary-action compact-action"
             type="button"
-            onClick={downloadAllImages}
+            onClick={downloadAllAssets}
             disabled={isGenerating || assets.length === 0}
           >
-            Download All Images
+            Download All
           </button>
         </div>
       </div>
@@ -113,19 +134,38 @@ export function SocialPackGallery({
       <div className="pf-social-export-list">
         {assets.map((asset) => {
           const aspect = aspectRatioForPlatform(asset.platform);
+          const showVideo = isReelsAsset(asset) && asset.videoDataUrl;
 
           return (
             <article key={asset.assetNumber} className="pf-social-export-card glass-panel">
               <div className="pf-social-export-visual">
                 <div className="pf-export-slide-frame pf-social-export-frame" style={{ aspectRatio: aspect }}>
-                  <img src={asset.dataUrl} alt={`${platformLabel(asset.platform)} post for ${asset.headline}`} />
+                  {showVideo ? (
+                    <video
+                      src={asset.videoDataUrl}
+                      controls
+                      playsInline
+                      loop
+                      muted
+                      className="pf-social-export-video"
+                      poster={asset.dataUrl}
+                    />
+                  ) : (
+                    <img src={asset.dataUrl} alt={`${platformLabel(asset.platform)} post for ${asset.headline}`} />
+                  )}
                   <div className="pf-export-slide-hover">
                     <button type="button" className="pf-export-hover-btn" onClick={() => void copyPost(asset)} title="Copy caption">
                       <Copy aria-hidden="true" />
                     </button>
-                    <button type="button" className="pf-export-hover-btn" onClick={() => downloadImage(asset)} title="Download image">
-                      <Download aria-hidden="true" />
-                    </button>
+                    {showVideo ? (
+                      <button type="button" className="pf-export-hover-btn" onClick={() => downloadVideo(asset)} title="Download MP4">
+                        <Download aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <button type="button" className="pf-export-hover-btn" onClick={() => downloadImage(asset)} title="Download image">
+                        <Download aria-hidden="true" />
+                      </button>
+                    )}
                     <span className="pf-export-hover-label">Quick actions</span>
                   </div>
                 </div>
@@ -135,14 +175,26 @@ export function SocialPackGallery({
                 <div className="slide-plan-header">
                   <span className="slide-badge">{socialPlatformMeta[asset.platform].label}</span>
                   <span className="format-badge">{socialPlatformMeta[asset.platform].formatLabel}</span>
+                  {showVideo ? <span className="role-badge">Video</span> : null}
                   <span className="role-badge">Variant {asset.selectedVariantId}</span>
                 </div>
                 <h3>{asset.headline}</h3>
                 <pre className="post-copy-preview">{formatSocialPostCopy(asset)}</pre>
                 <div className="toolbar-actions card-actions">
-                  <button className="secondary-action compact-action" type="button" onClick={() => downloadImage(asset)}>
-                    Download Image
-                  </button>
+                  {showVideo ? (
+                    <>
+                      <button className="secondary-action compact-action" type="button" onClick={() => downloadVideo(asset)}>
+                        Download MP4
+                      </button>
+                      <button className="secondary-action compact-action" type="button" onClick={() => downloadImage(asset)}>
+                        Download Cover PNG
+                      </button>
+                    </>
+                  ) : (
+                    <button className="secondary-action compact-action" type="button" onClick={() => downloadImage(asset)}>
+                      Download Image
+                    </button>
+                  )}
                   <button className="secondary-action compact-action" type="button" onClick={() => void copyPost(asset)}>
                     Copy Caption
                   </button>

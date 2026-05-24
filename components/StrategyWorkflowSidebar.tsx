@@ -1,7 +1,7 @@
 "use client";
 
 import { ImageIcon, Layout, Plus, Sliders } from "lucide-react";
-import type { AppProfile } from "@/lib/campaignTypes";
+import type { AppProfile, ScreenshotAssessment, ScreenshotQualityRating } from "@/lib/campaignTypes";
 import type { WorkflowTab } from "@/components/PromoForceNav";
 import { useAccentTheme } from "@/components/ThemeProvider";
 
@@ -15,6 +15,7 @@ type StrategyWorkflowSidebarProps = {
   hasEdits?: boolean;
   errorMessage?: string;
   screenshotPreviews: Array<{ index: number; previewUrl: string }>;
+  screenshotAssessments?: ScreenshotAssessment[];
   onNewCampaign: () => void;
   onNavigate: (tab: WorkflowTab) => void;
 };
@@ -29,10 +30,20 @@ export function StrategyWorkflowSidebar({
   hasEdits,
   errorMessage,
   screenshotPreviews,
+  screenshotAssessments,
   onNewCampaign,
   onNavigate,
 }: StrategyWorkflowSidebarProps) {
   const { theme } = useAccentTheme();
+
+  const ratingClass: Record<ScreenshotQualityRating, string> = {
+    great: "rating-great",
+    usable: "rating-usable",
+    retake: "rating-retake",
+  };
+
+  const ratingForIndex = (index: number) =>
+    screenshotAssessments?.find((assessment) => assessment.index === index)?.rating;
 
   return (
     <aside className="pf-workflow-sidebar">
@@ -104,11 +115,13 @@ export function StrategyWorkflowSidebar({
           <div className="uploaded-screens-strip pf-sidebar-screens">
             <span className="uploaded-screens-label">Uploaded screens ({screenshotPreviews.length})</span>
             <div className="pf-compact-screens-row pf-sidebar-screens-row">
-              {screenshotPreviews.map((preview) => (
+              {screenshotPreviews.map((preview) => {
+                const rating = ratingForIndex(preview.index);
+                return (
                 <figure
                   key={preview.index}
                   className="pf-compact-screen-thumb pf-sidebar-screen-thumb"
-                  title={`Screen ${preview.index + 1}`}
+                  title={`Screen ${preview.index + 1}${rating ? ` · ${rating}` : ""}`}
                   style={{
                     width: 44,
                     height: 44,
@@ -120,8 +133,14 @@ export function StrategyWorkflowSidebar({
                   }}
                 >
                   <span className="pf-compact-screen-num">{preview.index + 1}</span>
+                  {rating ? (
+                    <span className={`pf-sidebar-rating ${ratingClass[rating]}`} aria-label={rating}>
+                      {rating === "retake" ? "!" : rating.slice(0, 1).toUpperCase()}
+                    </span>
+                  ) : null}
                 </figure>
-              ))}
+              );
+              })}
             </div>
           </div>
         ) : null}

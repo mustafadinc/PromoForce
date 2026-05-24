@@ -1,8 +1,8 @@
-import { auth } from "@/lib/auth";
+import { auth, isAuthConfigured } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export default auth((req) => {
-  if (!process.env.AUTH_SECRET) {
+  if (!isAuthConfigured()) {
     return NextResponse.next();
   }
 

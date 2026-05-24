@@ -7,6 +7,7 @@ import {
   type StrategyBrief,
 } from "@/lib/campaignTypes";
 import { applyCreativeDirectorDefaults } from "@/lib/storeCreativeDirector";
+import { formatCategoryPresetForPrompt } from "@/lib/categoryStylePresets";
 
 export const storeSlideBeatMeta: Record<
   StoreSlideBeat,
@@ -96,6 +97,8 @@ export function buildAsoStrategyPromptBlock(profile: AppProfile, screenshotCount
 
   return [
     "Create ASO 5-slide App Store set: one conversion story (Hook→Problem→Feature→Proof→Download), not 5 clones or 5 unrelated ads.",
+    "",
+    formatCategoryPresetForPrompt(profile),
     "",
     `App: ${profile.appName} | ${profile.category}`,
     `Description: ${profile.description}`,

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { generateStrategyBrief } from "@/lib/agents/strategyAgent";
-import { buildScreenshotIntelligenceContext } from "@/lib/prepareScreenshotIntelligence";
+import { analyzeScreenshotIntelligence } from "@/lib/agents/screenshotIntelligenceAgent";
+import { extractScreenshotColorProfile } from "@/lib/extractScreenshotColorProfile";
 import { extractScreenshots, parseAppProfile, validateAppProfile, validateScreenshots } from "@/lib/parseCampaignForm";
+import { prepareAnalysisImages } from "@/lib/strategyImageUtils";
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -18,18 +20,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: screenshotError }, { status: 400 });
     }
 
-    const { colorProfile, screenshotIntelligence, images } = await buildScreenshotIntelligenceContext(
-      profile,
-      screenshots,
-    );
-    const strategy = await generateStrategyBrief(profile, images, colorProfile, screenshotIntelligence);
+    const colorProfile = await extractScreenshotColorProfile(screenshots);
+    const analysisImages = await prepareAnalysisImages(screenshots);
+    const screenshotIntelligence = await analyzeScreenshotIntelligence(profile, analysisImages, colorProfile);
 
-    return NextResponse.json({ strategy, screenshotIntelligence });
+    return NextResponse.json({ screenshotIntelligence, colorProfile });
   } catch (error) {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Strategy generation failed.",
-      },
+      { error: error instanceof Error ? error.message : "Screenshot analysis failed." },
       { status: 500 },
     );
   }

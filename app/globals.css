@@ -4472,6 +4472,14 @@ canvas:hover {
   border-radius: 0;
 }
 
+.pf-social-export-frame img,
+.pf-social-export-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .pf-social-export-copy {
   padding: 18px;
   min-width: 0;
@@ -5491,3 +5499,244 @@ canvas:hover {
   border: 0;
 }
 
+/* Tier 1 — set overview & narrative bar */
+.pf-narrative-bar {
+  margin: 0 0 16px;
+}
+
+.pf-narrative-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pf-narrative-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1 1 100px;
+  text-align: left;
+}
+
+.pf-narrative-step.is-active {
+  border-color: rgba(69, 214, 181, 0.45);
+  background: rgba(69, 214, 181, 0.08);
+}
+
+.pf-narrative-step-num {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.pf-narrative-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.pf-set-overview {
+  margin-bottom: 20px;
+}
+
+.pf-set-overview-header {
+  margin-bottom: 10px;
+}
+
+.pf-set-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.pf-set-overview-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pf-set-overview-card.is-active {
+  border-color: rgba(69, 214, 181, 0.4);
+}
+
+.pf-set-overview-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pf-set-overview-headline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pf-set-overview-sub {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.72;
+  line-height: 1.35;
+}
+
+.pf-set-overview-thumb {
+  margin: 0;
+  height: 72px;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pf-set-overview-no-screen {
+  font-size: 11px;
+  opacity: 0.5;
+}
+
+.pf-sidebar-rating {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+.pf-sidebar-screen-thumb {
+  position: relative;
+}
+
+.pf-sidebar-rating.rating-great {
+  background: rgba(69, 214, 181, 0.9);
+  color: #0b0d14;
+}
+
+.pf-sidebar-rating.rating-usable {
+  background: rgba(255, 193, 7, 0.9);
+  color: #0b0d14;
+}
+
+.pf-sidebar-rating.rating-retake {
+  background: rgba(255, 87, 87, 0.95);
+  color: #fff;
+}
+
+.pf-setup-aspect-warn {
+  margin-top: 10px;
+}
+
+.pf-readability-summary {
+  margin: 6px 0 0;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.pf-coherence-audit-panel {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pf-coherence-audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pf-coherence-audit-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.pf-coherence-issues {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.pf-coherence-hint,
+.pf-coherence-ok {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.pf-screenshot-intel-panel {
+  margin-bottom: 20px;
+}
+
+.pf-screenshot-intel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.pf-screenshot-intel-card {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pf-screenshot-intel-top {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.pf-screenshot-intel-thumb {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pf-screenshot-intel-desc {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pf-screenshot-intel-meta {
+  margin: 0 0 4px;
+  font-size: 11px;
+  opacity: 0.82;
+  line-height: 1.35;
+}
+
+.pf-screenshot-intel-tags {
+  margin: 6px 0 0;
+  font-size: 11px;
+  opacity: 0.7;
+}

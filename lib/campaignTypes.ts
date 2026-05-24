@@ -9,7 +9,7 @@ export const campaignTypeOptions: Array<{ value: CampaignType; label: string; de
   {
     value: "social_launch",
     label: "Social Launch Pack",
-    description: "Instagram, Story, and X posts with captions and hashtags.",
+    description: "Instagram Feed, Story, Reels video, and X posts with captions and hashtags.",
   },
   {
     value: "marketing_autopilot",
@@ -129,6 +129,41 @@ export type ScreenshotAssessment = {
   description?: string;
 };
 
+/** Rich per-screenshot vision analysis — used app-wide before generation. */
+export type ScreenshotIntelligence = {
+  index: number;
+  rating: ScreenshotQualityRating;
+  issues: string[];
+  retakeGuidance?: string;
+  /** Plain-language summary of what is visible on this screen. */
+  description: string;
+  /** Product features or capabilities shown (e.g. "habit streaks", "dark mode"). */
+  detectedFeatures: string[];
+  /** Notable UI regions or components (e.g. "tab bar", "chart widget"). */
+  uiElements: string[];
+  /** Marketing / ASO tags derived from screen content. */
+  tags: string[];
+  /** Benefit-led headline ideas for App Store or social. */
+  suggestedHeadlines: string[];
+  /** User outcomes this screen supports. */
+  suggestedBenefits: string[];
+  /** Short hook lines for Reels / Stories. */
+  suggestedSocialHooks: string[];
+  /** Which ASO beats this screen best supports. */
+  recommendedSlideBeats?: StoreSlideBeat[];
+  /** Primary action the user takes on this screen. */
+  primaryUserAction?: string;
+  screenType?:
+    | "onboarding"
+    | "home"
+    | "feature_detail"
+    | "settings"
+    | "paywall"
+    | "social"
+    | "analytics"
+    | "other";
+};
+
 export type BackgroundScene = {
   id: string;
   label: string;
@@ -178,6 +213,7 @@ export type StrategyBrief = {
   styleAnchorSlide: number;
   backgroundScenes: BackgroundScene[];
   screenshotAssessments: ScreenshotAssessment[];
+  screenshotIntelligence?: ScreenshotIntelligence[];
   slides: StoreSlidePlan[];
   colorProfile?: ScreenshotColorProfile | null;
 };
@@ -191,6 +227,7 @@ export type GeneratedSlideVariant = {
 export type GeneratedSlide = {
   slideNumber: number;
   role: SlideRole;
+  asoBeat?: StoreSlideBeat;
   headline: string;
   subheadline: string;
   dataUrl: string;
@@ -217,10 +254,19 @@ export type UploadedScreenshot = {
 };
 
 export const STORE_SLIDE_COUNT = 5;
-export const SOCIAL_ASSET_COUNT = 3;
+export const SOCIAL_ASSET_COUNT = 4;
 export const MAX_SCREENSHOTS = 5;
 
-export type SocialPlatform = "instagram_feed" | "instagram_story" | "twitter";
+export type SocialPlatform = "instagram_feed" | "instagram_story" | "instagram_reels" | "twitter";
+
+export type PostFormat = "single" | "carousel" | "story" | "reels";
+
+export type VideoTemplateId =
+  | "logo_reveal"
+  | "mood_teaser"
+  | "screenshot_reel"
+  | "kinetic_headline"
+  | "countdown_teaser";
 
 export type SocialAssetRole = "launch" | "feature" | "engagement";
 
@@ -239,6 +285,8 @@ export type SocialAssetPlan = {
   screenshotUsage: ScreenshotUsage;
   visualStyle: string;
   imageSize: ImageSize;
+  format?: PostFormat;
+  videoTemplate?: VideoTemplateId;
   copyVariants: CopyVariant[];
   selectedVariantId: CopyVariantId;
 };
@@ -251,6 +299,7 @@ export type SocialStrategyBrief = {
   accentColor?: string;
   brandColor?: string;
   colorProfile?: ScreenshotColorProfile | null;
+  screenshotIntelligence?: ScreenshotIntelligence[];
   assets: SocialAssetPlan[];
 };
 
@@ -266,16 +315,29 @@ export type GeneratedSocialAsset = {
   prompt: string;
   selectedVariantId: CopyVariantId;
   usedScreenshot: boolean;
+  format?: PostFormat;
+  videoTemplate?: VideoTemplateId;
+  videoDataUrl?: string;
 };
 
 export const socialPlatformMeta: Record<
   SocialPlatform,
-  { label: string; imageSize: ImageSize; formatLabel: string }
+  { label: string; imageSize: ImageSize; formatLabel: string; isVideo?: boolean }
 > = {
   instagram_feed: { label: "Instagram Feed", imageSize: "1024x1024", formatLabel: "1080×1080" },
   instagram_story: { label: "Instagram Story", imageSize: "1024x1536", formatLabel: "1080×1920" },
+  instagram_reels: {
+    label: "Instagram Reels",
+    imageSize: "1024x1536",
+    formatLabel: "1080×1920 MP4",
+    isVideo: true,
+  },
   twitter: { label: "X / Twitter", imageSize: "1536x1024", formatLabel: "1600×900" },
 };
+
+export function isSocialReelsAsset(asset: Pick<SocialAssetPlan, "platform" | "format">): boolean {
+  return asset.platform === "instagram_reels" || asset.format === "reels";
+}
 
 export type AutopilotPostRole =
   | "launch"
@@ -286,8 +348,6 @@ export type AutopilotPostRole =
   | "tip"
   | "behind_the_scenes";
 
-export type PostFormat = "single" | "carousel" | "story" | "reels";
-
 export type VisualTemplateId =
   | "hero_mockup"
   | "quote_card"
@@ -295,13 +355,6 @@ export type VisualTemplateId =
   | "comparison_split"
   | "annotated_screenshot"
   | "feature_spotlight";
-
-export type VideoTemplateId =
-  | "logo_reveal"
-  | "mood_teaser"
-  | "screenshot_reel"
-  | "kinetic_headline"
-  | "countdown_teaser";
 
 export type CampaignPhase = {
   id: string;
@@ -353,6 +406,7 @@ export type AutopilotStrategyBrief = {
   accentColor?: string;
   brandColor?: string;
   colorProfile?: ScreenshotColorProfile | null;
+  screenshotIntelligence?: ScreenshotIntelligence[];
   brandVoice: string;
   duration: CalendarDuration;
   startDate: string;
