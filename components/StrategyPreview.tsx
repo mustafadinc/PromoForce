@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NarrativeProgressBar } from "@/components/NarrativeProgressBar";
 import { ScreenshotIntelligencePanel } from "@/components/ScreenshotIntelligencePanel";
 import { SetOverviewPanel } from "@/components/SetOverviewPanel";
@@ -16,6 +16,7 @@ import type {
   StrategyBrief,
 } from "@/lib/campaignTypes";
 import { normalizeSlideEdit } from "@/lib/normalizeSlideEdit";
+import { buildSlidePatchForScreenshot } from "@/lib/syncSlideToScreenshot";
 import {
   applyCreativeDirectorDefaults,
   countUniqueBackgroundGenerations,
@@ -68,11 +69,14 @@ function updateSlideInStrategy(
   slideNumber: number,
   patch: Partial<StoreSlidePlan>,
   screenshotCount: number,
+  appProfile: AppProfile,
 ): StrategyBrief {
   return {
     ...strategy,
     slides: strategy.slides.map((slide) =>
-      slide.slideNumber === slideNumber ? normalizeSlideEdit(slide, patch, screenshotCount) : slide,
+      slide.slideNumber === slideNumber
+        ? normalizeSlideEdit(slide, patch, screenshotCount, { strategy, appProfile })
+        : slide,
     ),
   };
 }
@@ -179,8 +183,26 @@ export function StrategyPreview({
     onStrategyChange({ ...strategy, backgroundScenes, slides });
   };
 
+  const [screenshotSyncNotice, setScreenshotSyncNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setScreenshotSyncNotice(null);
+  }, [stepIndex]);
+
   const updateSlide = (slideNumber: number, patch: Partial<StoreSlidePlan>) => {
-    onStrategyChange(updateSlideInStrategy(strategy, slideNumber, patch, screenshotCount));
+    const slide = strategy.slides.find((item) => item.slideNumber === slideNumber);
+    if (
+      appProfile &&
+      slide &&
+      typeof patch.screenshotIndex === "number" &&
+      patch.screenshotIndex !== slide.screenshotIndex
+    ) {
+      const { message } = buildSlidePatchForScreenshot(strategy, slide, patch.screenshotIndex, appProfile);
+      setScreenshotSyncNotice(message);
+    }
+    onStrategyChange(
+      updateSlideInStrategy(strategy, slideNumber, patch, screenshotCount, appProfile ?? { appName: "", category: "", description: "", targetAudience: "" }),
+    );
   };
 
   const isBriefStep = stepIndex === 0;
@@ -239,6 +261,7 @@ export function StrategyPreview({
       <SetOverviewPanel
         slides={strategy.slides}
         screenshotAssessments={strategy.screenshotAssessments}
+        screenshotIntelligence={strategy.screenshotIntelligence}
         screenshotPreviews={screenshotPreviews}
         onSelectSlide={goToSlide}
       />
@@ -498,15 +521,22 @@ export function StrategyPreview({
 
           </div>
         ) : activeSlide ? (
-          <StoreSlideEditor
-            slide={activeSlide}
-            strategy={strategy}
-            screenshotPreviews={screenshotPreviews}
-            screenshotCount={screenshotCount}
-            isGenerating={isGenerating}
-            onUpdateSlide={(patch) => updateSlide(activeSlide.slideNumber, patch)}
-            onAssignScene={(sceneId) => assignBackgroundSceneToSlide(activeSlide.slideNumber, sceneId)}
-          />
+          <>
+            {screenshotSyncNotice ? (
+              <p className="pf-screenshot-sync-notice" role="status">
+                {screenshotSyncNotice}
+              </p>
+            ) : null}
+            <StoreSlideEditor
+              slide={activeSlide}
+              strategy={strategy}
+              screenshotPreviews={screenshotPreviews}
+              screenshotCount={screenshotCount}
+              isGenerating={isGenerating}
+              onUpdateSlide={(patch) => updateSlide(activeSlide.slideNumber, patch)}
+              onAssignScene={(sceneId) => assignBackgroundSceneToSlide(activeSlide.slideNumber, sceneId)}
+            />
+          </>
         ) : null}
       </StrategyCarousel>
     </section>

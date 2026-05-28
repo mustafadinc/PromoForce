@@ -1,3 +1,7 @@
+import type { MockupPose } from "@/lib/mockupPose";
+
+export type { MockupOrientation, MockupPlacement, MockupPose, MockupScale } from "@/lib/mockupPose";
+
 export type CampaignType = "app_store" | "social_launch" | "marketing_autopilot";
 
 export const campaignTypeOptions: Array<{ value: CampaignType; label: string; description: string }> = [
@@ -198,6 +202,7 @@ export type StoreSlidePlan = {
   showAppBranding: boolean;
   backgroundRationale: string;
   breakoutPanelDescription?: string;
+  mockupPose?: MockupPose;
 };
 
 export type StrategyBrief = {
@@ -234,6 +239,7 @@ export type GeneratedSlide = {
   prompt: string;
   backgroundDataUrl?: string;
   mockupColor?: string;
+  mockupPose?: MockupPose;
   renderVersion?: number;
   variants?: GeneratedSlideVariant[];
   selectedVariantId?: string;
@@ -243,6 +249,7 @@ export type StoreSlideRegenerateMode = "full" | "background" | "composite";
 
 export type StoreSlideRegenerateOptions = {
   mockupColor?: string;
+  mockupPose?: MockupPose;
 };
 
 export type UploadedScreenshot = {

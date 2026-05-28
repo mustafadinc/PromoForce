@@ -43,7 +43,7 @@ export const METALLIC_SCREEN_CONTAIN_SCALE = 0.988;
 export const METALLIC_SCREEN_OBJECT_ANCHOR_Y = 0.5;
 
 /** Bump when mockup fit math changes — export recompositing picks this up. */
-export const MOCKUP_SCREEN_FIT_VERSION = 9;
+export const MOCKUP_SCREEN_FIT_VERSION = 14;
 
 /** Inset from top inner bezel / Dynamic Island — room above status bar. */
 export const METALLIC_SCREEN_CONTENT_OFFSET_Y = 8;

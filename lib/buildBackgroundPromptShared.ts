@@ -1,4 +1,5 @@
 import type { ScreenshotColorProfile } from "@/lib/campaignTypes";
+import { DEFAULT_MOCKUP_POSE, mockupPoseCompositionHint, type MockupPose } from "@/lib/mockupPose";
 import { buildScreenshotColorHarmonyBlock } from "@/lib/applyScreenshotColorHarmony";
 
 export function backgroundPromptQualityBlock(colorProfile?: ScreenshotColorProfile | null) {
@@ -28,13 +29,19 @@ export function backgroundPromptExclusionsBlock() {
   ].join("\n");
 }
 
-export function backgroundPromptCompositionBlock(usesScreenshot: boolean) {
+export function backgroundPromptCompositionBlock(
+  usesScreenshot: boolean,
+  mockupPose: MockupPose = DEFAULT_MOCKUP_POSE,
+) {
   if (usesScreenshot) {
     return [
       "COMPOSITION for overlay workflow:",
       "- Top 35%: calm, uncluttered zone for headline text (soft gradient fade or negative space)",
       "- Center-lower: moderately open area for phone mockup — avoid busy detail behind device",
       "- Use directional lighting that draws the eye upward toward the headline zone",
+      "",
+      "MOCKUP PLACEMENT (post-production device overlay):",
+      mockupPoseCompositionHint(mockupPose),
     ].join("\n");
   }
 

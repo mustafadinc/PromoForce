@@ -29,6 +29,8 @@ import {
   attachScreenshotIntelligence,
   formatScreenshotIntelligenceForPrompt,
 } from "@/lib/screenshotIntelligenceFormat";
+import { normalizeMockupPose } from "@/lib/mockupPose";
+import { alignStoreStrategyToIntelligence } from "@/lib/syncSlideToScreenshot";
 
 export type { StrategyImageInput };
 export { fileToStrategyImage, prepareStrategyImages } from "@/lib/strategyImageUtils";
@@ -101,6 +103,10 @@ function normalizeSlide(
     visualVariant: String(raw.visualVariant || beatMeta.visualVariantHint).trim(),
     breakoutPanelDescription: String(raw.breakoutPanelDescription || "").trim() || undefined,
     ...creative,
+    mockupPose:
+      screenshotUsage === "none"
+        ? undefined
+        : normalizeMockupPose(raw.mockupPose, slideNumber),
   };
 }
 
@@ -258,6 +264,7 @@ export async function generateStrategyBrief(
               "Headlines are benefit-first, short, and unique per slide.",
               "Match uploaded screenshots to the slide where they best prove the message.",
               "As creative director, decide deliberately which backgrounds include people, which are environment-only, which are abstract brand worlds, and which slides reuse the same generated background.",
+              "For each screenshot slide (1–4), mockupPose MUST use orientation tilt_left or tilt_right (never upright) — premium 3D ASO showcase like SWAY. Slide 1: tilt_right, hero, placement right. Vary tilt/placement on other slides so backgrounds stay visible.",
               "Rate each uploaded screenshot great, usable, or retake with specific issues. Split every headline into headlineVerb (action verb) and headlineDescriptor (benefit words), both uppercase.",
             ].join(" "),
           },
@@ -282,20 +289,26 @@ export async function generateStrategyBrief(
       throw new Error("Strategy model returned empty content.");
     }
 
-    return attachScreenshotIntelligence(
-      applyScreenshotColorHarmonyToStoreBrief(
-        normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
-        colorProfile,
+    return alignStoreStrategyToIntelligence(
+      attachScreenshotIntelligence(
+        applyScreenshotColorHarmonyToStoreBrief(
+          normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
+          colorProfile,
+        ),
+        screenshotIntelligence,
       ),
-      screenshotIntelligence,
+      profile,
     );
   } catch {
-    return attachScreenshotIntelligence(
-      applyScreenshotColorHarmonyToStoreBrief(
-        applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
-        colorProfile,
+    return alignStoreStrategyToIntelligence(
+      attachScreenshotIntelligence(
+        applyScreenshotColorHarmonyToStoreBrief(
+          applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
+          colorProfile,
+        ),
+        screenshotIntelligence,
       ),
-      screenshotIntelligence,
+      profile,
     );
   }
 }

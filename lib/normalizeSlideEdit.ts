@@ -1,11 +1,35 @@
-import type { ScreenshotUsage, StoreSlidePlan } from "@/lib/campaignTypes";
+import type { AppProfile, ScreenshotUsage, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
+import {
+  buildSlidePatchForScreenshot,
+  shouldSyncSlideToScreenshot,
+} from "@/lib/syncSlideToScreenshot";
 
 export function normalizeSlideEdit(
   slide: StoreSlidePlan,
   patch: Partial<StoreSlidePlan>,
   screenshotCount: number,
+  context?: {
+    strategy?: StrategyBrief;
+    appProfile?: AppProfile;
+  },
 ): StoreSlidePlan {
-  const next = { ...slide, ...patch };
+  let mergedPatch = { ...patch };
+
+  if (
+    context?.strategy &&
+    context.appProfile &&
+    shouldSyncSlideToScreenshot(slide, patch)
+  ) {
+    const sync = buildSlidePatchForScreenshot(
+      context.strategy,
+      slide,
+      patch.screenshotIndex,
+      context.appProfile,
+    );
+    mergedPatch = { ...mergedPatch, ...sync.patch };
+  }
+
+  const next = { ...slide, ...mergedPatch };
 
   if (next.screenshotUsage === "none" || screenshotCount === 0) {
     next.screenshotIndex = null;

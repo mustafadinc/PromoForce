@@ -29,7 +29,7 @@ export function ScreenshotIntelligencePanel({
       <div className="pf-set-overview-header">
         <h4 className="pf-form-section-title">Screenshot intelligence</h4>
         <p className="pf-form-section-hint">
-          AI analyzed each upload — features, tags, and headline ideas used across strategy and Reels.
+          By upload order (Screen 1 = first file). Set overview shows which screen each slide actually uses.
         </p>
       </div>
       <div className="pf-screenshot-intel-grid">
@@ -39,10 +39,10 @@ export function ScreenshotIntelligencePanel({
             <article key={intel.index} className="pf-screenshot-intel-card">
               <div className="pf-screenshot-intel-top">
                 {preview ? (
-                  <figure
-                    className="pf-screenshot-intel-thumb"
-                    style={{ backgroundImage: `url("${preview.previewUrl}")` }}
-                  />
+                  <figure className="pf-screenshot-intel-thumb">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.previewUrl} alt="" />
+                  </figure>
                 ) : null}
                 <div>
                   <span className="aso-badge">Screen {intel.index + 1}</span>

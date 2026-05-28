@@ -1,6 +1,11 @@
 "use client";
 
-import type { ScreenshotAssessment, ScreenshotQualityRating, StoreSlidePlan } from "@/lib/campaignTypes";
+import type {
+  ScreenshotAssessment,
+  ScreenshotIntelligence,
+  ScreenshotQualityRating,
+  StoreSlidePlan,
+} from "@/lib/campaignTypes";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 type ScreenshotPreview = {
@@ -11,6 +16,7 @@ type ScreenshotPreview = {
 type SetOverviewPanelProps = {
   slides: StoreSlidePlan[];
   screenshotAssessments?: ScreenshotAssessment[];
+  screenshotIntelligence?: ScreenshotIntelligence[];
   screenshotPreviews: ScreenshotPreview[];
   activeSlideNumber?: number | null;
   onSelectSlide?: (slideNumber: number) => void;
@@ -30,9 +36,21 @@ function assessmentForSlide(
   return assessments.find((a) => a.index === slide.screenshotIndex) ?? null;
 }
 
+function screenLabelForSlide(
+  slide: StoreSlidePlan,
+  intelligence: ScreenshotIntelligence[] | undefined,
+): string | null {
+  if (slide.screenshotIndex === null) return null;
+  const intel = intelligence?.find((row) => row.index === slide.screenshotIndex);
+  if (!intel) return `Screen ${slide.screenshotIndex + 1}`;
+  const type = intel.screenType ? intel.screenType.replace(/_/g, " ") : null;
+  return type ? `Screen ${slide.screenshotIndex + 1} · ${type}` : `Screen ${slide.screenshotIndex + 1}`;
+}
+
 export function SetOverviewPanel({
   slides,
   screenshotAssessments,
+  screenshotIntelligence,
   screenshotPreviews,
   activeSlideNumber = null,
   onSelectSlide,
@@ -41,7 +59,9 @@ export function SetOverviewPanel({
     <section className="pf-set-overview">
       <div className="pf-set-overview-header">
         <h4 className="pf-form-section-title">Set overview</h4>
-        <p className="pf-form-section-hint">Five-slide ASO story — click a slide to edit.</p>
+        <p className="pf-form-section-hint">
+          Five-slide ASO story — each card shows the screen assigned to that slide. Click to edit.
+        </p>
       </div>
       <div className="pf-set-overview-grid">
         {slides.map((slide) => {
@@ -67,11 +87,18 @@ export function SetOverviewPanel({
               <p className="pf-set-overview-headline">{slide.headline || "—"}</p>
               <p className="pf-set-overview-sub">{slide.subheadline || beat.conversionGoal.slice(0, 60)}</p>
               {preview ? (
-                <figure
-                  className="pf-set-overview-thumb"
-                  style={{ backgroundImage: `url("${preview.previewUrl}")` }}
-                  title={`Screen ${preview.index + 1}`}
-                />
+                <>
+                  <span className="pf-set-overview-screen-label">
+                    {screenLabelForSlide(slide, screenshotIntelligence)}
+                  </span>
+                  <figure
+                    className="pf-set-overview-thumb"
+                    title={screenLabelForSlide(slide, screenshotIntelligence) ?? undefined}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview.previewUrl} alt="" />
+                  </figure>
+                </>
               ) : (
                 <span className="pf-set-overview-no-screen">No screenshot</span>
               )}

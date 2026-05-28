@@ -1,3 +1,4 @@
+import { normalizeMockupPose } from "@/lib/mockupPose";
 import { splitHeadlineParts } from "@/lib/asoTypography";
 import type {
   AppProfile,
@@ -379,12 +380,18 @@ export function applyCreativeDirectorDefaults(
 
     const solidBackdropNote = `Solid backdrop (${brandColor}) from your brand color — generated in code, not a stock palette.`;
 
+    const mockupPose =
+      slide.screenshotUsage === "none"
+        ? undefined
+        : normalizeMockupPose(slide.mockupPose, slideNumber);
+
     return {
       ...slide,
       slideNumber,
       ...creative,
       ...headlines,
       backgroundSceneId: sceneId,
+      mockupPose,
       ...(useSolid
         ? {
             backgroundTreatment: "abstract_brand" as const,

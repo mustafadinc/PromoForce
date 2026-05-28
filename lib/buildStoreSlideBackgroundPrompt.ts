@@ -7,6 +7,7 @@ import {
 } from "@/lib/buildBackgroundPromptShared";
 import { getAppStoreGenerationSize } from "@/lib/appStoreImageSizes";
 import { resolveBackgroundScene } from "@/lib/storeCreativeDirector";
+import { normalizeMockupPose } from "@/lib/mockupPose";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 const treatmentPrompts: Record<BackgroundTreatment, string> = {
@@ -38,6 +39,8 @@ export function buildStoreSlideBackgroundPrompt(
   const scene = resolveBackgroundScene(strategy, slide);
   const treatment = scene?.treatment || slide.backgroundTreatment;
   const isCtaSlide = slide.asoBeat === "download_cta";
+  const usesScreenshot = slide.screenshotUsage !== "none" && !isCtaSlide;
+  const mockupPose = normalizeMockupPose(slide.mockupPose, slide.slideNumber);
 
   const sceneDescription =
     scene?.sceneDescription || slide.visualVariant || slide.backgroundRationale || storeSlideBeatMeta[slide.asoBeat].visualVariantHint;
@@ -72,7 +75,7 @@ export function buildStoreSlideBackgroundPrompt(
     `Accent color: ${strategy.accentColor}`,
     strategy.brandColor ? `Secondary / gradient end: ${strategy.brandColor}` : "",
     "",
-    backgroundPromptCompositionBlock(!isCtaSlide),
+    backgroundPromptCompositionBlock(usesScreenshot, mockupPose),
     "",
     "Avoid generic stock aesthetics. Scene must feel intentional and premium for this app category.",
     "CRITICAL: No flat gray, white, or empty backgrounds. Use rich color, depth, and environmental detail.",

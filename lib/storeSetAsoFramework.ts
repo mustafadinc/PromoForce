@@ -6,6 +6,7 @@ import {
   type StoreSlidePlan,
   type StrategyBrief,
 } from "@/lib/campaignTypes";
+import { mockupPoseForSlide } from "@/lib/mockupPose";
 import { applyCreativeDirectorDefaults } from "@/lib/storeCreativeDirector";
 import { formatCategoryPresetForPrompt } from "@/lib/categoryStylePresets";
 
@@ -110,7 +111,8 @@ export function buildAsoStrategyPromptBlock(profile: AppProfile, screenshotCount
     "JSON keys: positioning, primaryMessage, targetAudience, narrativeArc, designSystem, visualTheme, accentColor, brandColor, setMode (lifestyle | solid | hybrid), styleAnchorSlide, screenshotAssessments[], backgroundScenes[], slides[5].",
     "screenshotAssessments[]: per uploaded image index — rating (great | usable | retake), issues[], retakeGuidance, description.",
     "backgroundScenes[] (4–5 unique scenes for slides 1–5): id, label, treatment, sceneDescription, reuseRationale, sharedBySlides[].",
-    "Each slide: slideNumber, role, asoBeat, conversionGoal, headline, headlineVerb (ACTION VERB uppercase), headlineDescriptor (benefit words uppercase), subheadline, screenshotIndex, screenshotUsage, screenshotRationale, screenshotRating, screenshotIssues[], retakeGuidance, visualStyle, visualVariant, backgroundSceneId, backgroundTreatment, layoutStyle, headlineAccent, featureHighlights[], showAppBranding, backgroundRationale, breakoutPanelDescription (optional).",
+    "Each slide: slideNumber, role, asoBeat, conversionGoal, headline, headlineVerb (ACTION VERB uppercase), headlineDescriptor (benefit words uppercase), subheadline, screenshotIndex, screenshotUsage, screenshotRationale, screenshotRating, screenshotIssues[], retakeGuidance, visualStyle, visualVariant, backgroundSceneId, backgroundTreatment, layoutStyle, headlineAccent, featureHighlights[], showAppBranding, backgroundRationale, mockupPose { orientation: upright|tilt_left|tilt_right, scale: compact|standard|hero, placement: center|left|right }, breakoutPanelDescription (optional).",
+    "mockupPose: Slides 1–4 MUST use tilt_left or tilt_right (3D showcase, never upright). Slide 1 = tilt_right + hero + placement right (SWAY hero). Vary tilt/placement on 2–4; opposite side of frame stays open for lifestyle/bokeh.",
     "setMode: DEFAULT lifestyle (AI cinematic backgrounds). Use solid ONLY if user needs flat brand-color slides. Use hybrid ONLY if user wants 1 AI hero + solid rest.",
     "setMode solid: brandColor hex for ALL slides (programmatic fill). setMode lifestyle: 4–5 AI scenes. setMode hybrid: slide styleAnchorSlide gets AI hero; other slides use brandColor solid fill.",
     "",
@@ -194,6 +196,7 @@ export function buildFallbackStoreStrategy(profile: AppProfile, screenshotCount:
       screenshotRationale: template.screenshotRationale,
       visualStyle: `${meta.copyGuidance} ${meta.visualVariantHint}`,
       visualVariant: template.visualVariant,
+      mockupPose: usesScreenshot ? mockupPoseForSlide(index + 1) : undefined,
     } as StoreSlidePlan;
   });
 

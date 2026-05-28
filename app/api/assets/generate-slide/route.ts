@@ -5,6 +5,7 @@ import { buildStoreSlidePrompt } from "@/lib/buildStoreSlidePrompt";
 import { createAssetStreamResponse } from "@/lib/createAssetStreamResponse";
 import { getAppStoreGenerationSize } from "@/lib/appStoreImageSizes";
 import type { AppProfile, LockedTypography, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
+import { normalizeMockupPose } from "@/lib/mockupPose";
 import { extractSlideScreenshot, parseAppProfile } from "@/lib/parseCampaignForm";
 
 function parseStrategy(formData: FormData): StrategyBrief {
@@ -65,6 +66,16 @@ export async function POST(request: Request) {
     const existingBackgroundBase64 =
       String(formData.get("existingBackgroundBase64") || "") || undefined;
     const mockupColor = String(formData.get("mockupColor") || "") || undefined;
+    let mockupPoseOverride: ReturnType<typeof normalizeMockupPose> | undefined;
+    try {
+      const rawPose = String(formData.get("mockupPose") || "");
+      if (rawPose) {
+        mockupPoseOverride = normalizeMockupPose(JSON.parse(rawPose), slide.slideNumber);
+      }
+    } catch {
+      mockupPoseOverride = undefined;
+    }
+    const mockupPose = mockupPoseOverride ?? slide.mockupPose;
     const styleAnchorHint =
       slide.slideNumber !== strategy.styleAnchorSlide
         ? `Cohesive with slide ${strategy.styleAnchorSlide} — same polish and brand intensity.`
@@ -114,6 +125,7 @@ export async function POST(request: Request) {
         regenerateMode,
         existingBackgroundBase64,
         mockupColor,
+        mockupPose,
         styleAnchorSlide: strategy.styleAnchorSlide,
       },
       {

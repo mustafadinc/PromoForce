@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 
 import { Copy, Download, Sparkles } from "lucide-react";
 
-import type { GeneratedSlide, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
+import { MockupPoseControls } from "@/components/MockupPoseControls";
+import type { GeneratedSlide, MockupPose, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
 import { getBeatForSlide, storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 import {
@@ -22,6 +23,7 @@ import {
   type MockupFrameColor,
 
 } from "@/lib/mockupFrameColors";
+import { normalizeMockupPose } from "@/lib/mockupPose";
 
 
 
@@ -88,6 +90,12 @@ export function StoreSlideExportCard({
 
   );
 
+  const [mockupPose, setMockupPose] = useState<MockupPose>(() =>
+    normalizeMockupPose(slide.mockupPose, slide.slideNumber),
+  );
+
+  const showMockupControls = slide.asoBeat !== "download_cta";
+
 
 
   useEffect(() => {
@@ -95,6 +103,10 @@ export function StoreSlideExportCard({
     setMockupColor(normalizeMockupFrameColor(slide.mockupColor ?? DEFAULT_MOCKUP_FRAME_COLOR));
 
   }, [slide.mockupColor, slide.slideNumber]);
+
+  useEffect(() => {
+    setMockupPose(normalizeMockupPose(slide.mockupPose, slide.slideNumber));
+  }, [slide.mockupPose, slide.slideNumber]);
 
 
 
@@ -286,13 +298,30 @@ export function StoreSlideExportCard({
 
               </div>
 
+              {showMockupControls ? (
+                <>
+                  <span className="field-label">Mockup layout</span>
+                  <MockupPoseControls
+                    pose={mockupPose}
+                    disabled={isGenerating}
+                    compact
+                    onChange={setMockupPose}
+                  />
+                </>
+              ) : null}
+
               <button
 
                 className="slide-action slide-action-composite"
 
                 type="button"
 
-                onClick={() => onRegenerateSlide(slide.slideNumber, "composite", { mockupColor })}
+                onClick={() =>
+                  onRegenerateSlide(slide.slideNumber, "composite", {
+                    mockupColor,
+                    mockupPose: showMockupControls ? mockupPose : undefined,
+                  })
+                }
 
                 disabled={isGenerating || !slide.backgroundDataUrl}
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { MockupPoseControls } from "@/components/MockupPoseControls";
+import { MockupPosePreview } from "@/components/MockupPosePreview";
 import { ScreenshotVisualPanel } from "@/components/ScreenshotVisualPanel";
 import type {
   BackgroundTreatment,
@@ -8,6 +10,7 @@ import type {
   StoreSlidePlan,
   StrategyBrief,
 } from "@/lib/campaignTypes";
+import { normalizeMockupPose } from "@/lib/mockupPose";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 import { isSlideSolidBackground } from "@/lib/storeCreativeDirector";
 
@@ -55,6 +58,11 @@ export function StoreSlideEditor({
   onUpdateSlide,
   onAssignScene,
 }: StoreSlideEditorProps) {
+  const activeScreenshotUrl =
+    slide.screenshotIndex !== null
+      ? screenshotPreviews.find((shot) => shot.index === slide.screenshotIndex)?.previewUrl
+      : null;
+
   return (
     <div className="pf-carousel-step pf-step-split">
       <div className="pf-step-form-column">
@@ -171,6 +179,29 @@ export function StoreSlideEditor({
           </label>
         ) : null}
 
+        {slide.screenshotUsage !== "none" ? (
+          <div className="field field-wide mockup-pose-strategy-block">
+            <span className="field-label">Mockup layout (AI + composite)</span>
+            <p className="pf-form-section-hint">
+              Angle, size, and position on the canvas. Background generation uses this to leave room for the device.
+            </p>
+            <div className="mockup-pose-strategy-row">
+              <MockupPoseControls
+                pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
+                disabled={isGenerating}
+                onChange={(mockupPose) => onUpdateSlide({ mockupPose })}
+              />
+              <MockupPosePreview
+                compact
+                pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
+                headline={slide.headline}
+                subheadline={slide.subheadline}
+                screenshotUrl={activeScreenshotUrl}
+              />
+            </div>
+          </div>
+        ) : null}
+
         <details className="pf-advanced-panel field-wide">
           <summary>Advanced slide options</summary>
           <div className="pf-advanced-fields">
@@ -232,7 +263,11 @@ export function StoreSlideEditor({
         isGenerating={isGenerating}
         showVisualDirection={false}
         onUsageChange={(usage) => onUpdateSlide({ screenshotUsage: usage })}
-        onScreenshotSelect={(index) => onUpdateSlide({ screenshotIndex: index })}
+        onScreenshotSelect={(index) => {
+          if (index !== slide.screenshotIndex) {
+            onUpdateSlide({ screenshotIndex: index });
+          }
+        }}
       />
     </div>
   );

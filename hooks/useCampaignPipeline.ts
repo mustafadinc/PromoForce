@@ -374,6 +374,7 @@ export function useCampaignPipeline() {
       regenerateMode?: StoreSlideRegenerateMode;
       existingBackgroundDataUrl?: string;
       mockupColor?: string;
+      mockupPose?: import("@/lib/mockupPose").MockupPose;
     },
   ) => {
     const formData = new FormData();
@@ -400,6 +401,9 @@ export function useCampaignPipeline() {
     }
     if (options?.mockupColor) {
       formData.append("mockupColor", options.mockupColor);
+    }
+    if (options?.mockupPose) {
+      formData.append("mockupPose", JSON.stringify(options.mockupPose));
     }
 
     const response = await fetch("/api/assets/generate-slide", { method: "POST", body: formData, signal });
@@ -512,6 +516,7 @@ export function useCampaignPipeline() {
           dataUrl: selected.dataUrl,
           prompt: selected.prompt,
           backgroundDataUrl,
+          mockupPose: slide.mockupPose,
           variants: variantResults.length > 1 ? variantResults : undefined,
           selectedVariantId: selected.id,
         });
@@ -605,6 +610,10 @@ export function useCampaignPipeline() {
             mode === "composite"
               ? options?.mockupColor ?? existingSlide?.mockupColor
               : undefined,
+          mockupPose:
+            mode === "composite"
+              ? options?.mockupPose ?? existingSlide?.mockupPose
+              : undefined,
         },
       );
 
@@ -621,6 +630,10 @@ export function useCampaignPipeline() {
 
       const mockupColor =
         mode === "composite" ? options?.mockupColor ?? existingSlide?.mockupColor : existingSlide?.mockupColor;
+      const mockupPose =
+        mode === "composite"
+          ? options?.mockupPose ?? existingSlide?.mockupPose ?? slide.mockupPose
+          : slide.mockupPose ?? existingSlide?.mockupPose;
 
       setGeneratedSlides((prev) =>
         prev.map((item) =>
@@ -631,6 +644,7 @@ export function useCampaignPipeline() {
                 prompt: String(result.revisedPrompt || result.prompt || ""),
                 backgroundDataUrl,
                 mockupColor,
+                mockupPose,
                 renderVersion: Date.now(),
               }
             : item,

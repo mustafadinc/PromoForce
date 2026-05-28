@@ -1319,6 +1319,353 @@ canvas:hover {
   background: none;
 }
 
+.mockup-pose-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mockup-pose-controls.is-compact {
+  gap: 6px;
+}
+
+.mockup-pose-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mockup-pose-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mockup-pose-field select {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font-size: 0.78rem;
+}
+
+.mockup-pose-strategy-block {
+  margin-top: 4px;
+}
+
+.mockup-pose-strategy-row {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (min-width: 640px) {
+  .mockup-pose-strategy-row {
+    grid-template-columns: minmax(0, 1fr) minmax(108px, 172px);
+  }
+}
+
+.mockup-pose-preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.mockup-pose-preview-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mockup-pose-preview.is-compact {
+  margin-top: 0;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mockup-pose-preview.is-compact .mockup-pose-preview-label {
+  font-size: 0.68rem;
+}
+
+.mockup-pose-preview.is-compact .mockup-pose-preview-canvas {
+  max-width: 196px;
+  margin: 0;
+  border-radius: 10px;
+  font-size: 8px;
+  min-height: calc(196px * 2784 / 1280);
+  box-shadow:
+    inset 0 0 0 1px rgba(69, 214, 181, 0.1),
+    0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.mockup-pose-preview-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  min-height: calc(280px * 2784 / 1280);
+  aspect-ratio: 1280 / 2784;
+  margin: 0 auto;
+  font-size: clamp(10px, 2.2vw, 14px);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(69, 214, 181, 0.22);
+  background: linear-gradient(165deg, #1a2238 0%, #0f1524 42%, #162a32 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(69, 214, 181, 0.1),
+    0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.mockup-pose-preview-headline-zone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34%;
+  padding: 10% 8% 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.mockup-pose-preview-headline {
+  margin: 0;
+  font-size: 0.72em;
+  font-weight: 800;
+  line-height: 1.12;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.mockup-pose-preview-sub {
+  margin: 0.35em 0 0;
+  font-size: 0.5em;
+  color: rgba(45, 212, 191, 0.92);
+  line-height: 1.35;
+}
+
+.mockup-pose-preview-placeholder {
+  font-size: 0.65em;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+}
+
+.mockup-pose-preview-bg-hint {
+  position: absolute;
+  top: 38%;
+  bottom: 22%;
+  width: 28%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px dashed rgba(69, 214, 181, 0.35);
+  background: rgba(69, 214, 181, 0.06);
+  z-index: 0;
+}
+
+.mockup-pose-preview-bg-hint.is-left {
+  left: 5%;
+  width: 34%;
+}
+
+.mockup-pose-preview-bg-hint.is-right {
+  right: 6%;
+}
+
+.mockup-pose-preview-bg-hint span {
+  font-size: 0.45em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(69, 214, 181, 0.65);
+  transform: rotate(-90deg);
+}
+
+.mockup-pose-preview-glow {
+  position: absolute;
+  bottom: 10%;
+  height: 52%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(45, 212, 191, 0.42) 0%,
+    rgba(45, 212, 191, 0.12) 42%,
+    transparent 72%
+  );
+  filter: blur(10px);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mockup-pose-preview-canvas.placement-right .mockup-pose-preview-glow {
+  left: 28%;
+  right: 4%;
+}
+
+.mockup-pose-preview-canvas.placement-left .mockup-pose-preview-glow {
+  left: 4%;
+  right: 28%;
+}
+
+.mockup-pose-preview-canvas.placement-center .mockup-pose-preview-glow {
+  left: 18%;
+  right: 18%;
+}
+
+.mockup-pose-preview-composite-host {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.mockup-pose-preview-composite-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
+}
+
+.mockup-pose-preview-3d-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  perspective: 1100px;
+  perspective-origin: 50% 55%;
+}
+
+.mockup-pose-preview-3d-rig {
+  position: absolute;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.55));
+}
+
+.mockup-pose-preview-3d-rig.is-anchor-left {
+  transform-origin: left bottom;
+}
+
+.mockup-pose-preview-3d-rig.is-anchor-right {
+  transform-origin: right bottom;
+}
+
+.mockup-pose-preview-3d-rig.is-anchor-center {
+  transform-origin: center bottom;
+}
+
+.mockup-pose-preview-3d-rig .iphone-17-pro {
+  margin: 0;
+}
+
+.mockup-pose-preview-persp-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.mockup-pose-preview-persp-screen,
+.mockup-pose-preview-persp-frame-img {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+.mockup-pose-preview-persp-screen {
+  z-index: 1;
+}
+
+.mockup-pose-preview-persp-frame-img {
+  z-index: 2;
+}
+
+.mockup-pose-preview-persp-screen.is-empty {
+  background: #0a0a0e;
+}
+
+.mockup-pose-preview-phone {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+}
+
+.mockup-pose-preview-device {
+  display: block;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 430 / 880;
+  overflow: visible;
+}
+
+.mockup-pose-preview-screen {
+  position: absolute;
+  inset: 2.8% 4% 2.5% 4%;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  object-position: center bottom;
+  border-radius: 10%;
+  background: #111;
+}
+
+.mockup-pose-preview-screen.is-empty {
+  display: block;
+  background: linear-gradient(180deg, #1c1c22 0%, #0a0a0e 100%);
+}
+
+.mockup-pose-preview-bezel {
+  position: absolute;
+  inset: 0;
+  border-radius: 14% / 7%;
+  border: 3px solid rgba(220, 220, 228, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.mockup-pose-preview-side {
+  position: absolute;
+  top: 3%;
+  bottom: 3%;
+  width: 9%;
+  background: linear-gradient(90deg, #4a4a54, #888890);
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+.mockup-pose-preview-side.is-left {
+  left: -7%;
+  transform: skewY(-2deg);
+}
+
+.mockup-pose-preview-side.is-right {
+  right: -7%;
+  transform: skewY(2deg);
+}
+
+.mockup-pose-preview-footnote {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .slide-action {
   min-height: 36px;
   padding: 0 10px;
@@ -5220,8 +5567,8 @@ canvas:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 280px;
-  padding: 12px 0;
+  min-height: 0;
+  padding: 8px 0;
   border-radius: 12px;
   background: radial-gradient(circle at 50% 30%, rgba(69, 214, 181, 0.08), transparent 55%),
     rgba(0, 0, 0, 0.22);
@@ -5430,6 +5777,17 @@ canvas:hover {
   line-height: 1.45;
 }
 
+.pf-screenshot-sync-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #c8f5ea;
+  background: rgba(69, 214, 181, 0.1);
+  border: 1px solid rgba(69, 214, 181, 0.28);
+}
+
 .pf-launch-format-list {
   list-style: none;
   margin: 0;
@@ -5593,13 +5951,37 @@ canvas:hover {
   line-height: 1.35;
 }
 
+.pf-set-overview-screen-label {
+  display: block;
+  margin: 6px 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
 .pf-set-overview-thumb {
-  margin: 0;
-  height: 72px;
+  margin: 4px auto 0;
+  width: 52px;
+  aspect-ratio: 9 / 19.5;
+  max-height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   border-radius: 8px;
-  background-size: cover;
-  background-position: center;
+  background: #0a0b0f;
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pf-set-overview-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center top;
 }
 
 .pf-set-overview-no-screen {
@@ -5712,14 +6094,26 @@ canvas:hover {
 }
 
 .pf-screenshot-intel-thumb {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
-  border-radius: 8px;
-  background-size: cover;
-  background-position: center;
+  width: 44px;
+  min-width: 44px;
+  aspect-ratio: 9 / 19.5;
+  max-height: 92px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0a0b0f;
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pf-screenshot-intel-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center top;
 }
 
 .pf-screenshot-intel-desc {

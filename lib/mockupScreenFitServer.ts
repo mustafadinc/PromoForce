@@ -29,10 +29,13 @@ export async function fitScreenshotToMockupScreen(
   const scaledW = Math.max(1, Math.round(srcW * scale));
   const scaledH = Math.max(1, Math.round(srcH * scale));
 
-  const resized = await sharp(screenshot).resize(scaledW, scaledH, { fit: "fill" }).png().toBuffer();
+  const resized = await sharp(screenshot)
+    .resize(scaledW, scaledH, { fit: "fill", kernel: sharp.kernel.lanczos3 })
+    .png()
+    .toBuffer();
 
-  const destX = Math.round(fit.sideInset + (fit.contentW - scaledW) / 2 + fit.shiftX + fit.objectShiftX);
-  const destY = Math.round(fit.offsetY + fit.contentH - scaledH);
+  const destX = fit.sideInset + (fit.contentW - scaledW) / 2 + fit.shiftX + fit.objectShiftX;
+  const destY = fit.offsetY + fit.contentH - scaledH;
 
   const canvas = await sharp({
     create: {
@@ -42,7 +45,7 @@ export async function fitScreenshotToMockupScreen(
       background: { r: 0, g: 0, b: 0, alpha: 1 },
     },
   })
-    .composite([{ input: resized, top: destY, left: destX }])
+    .composite([{ input: resized, top: Math.round(destY), left: Math.round(destX) }])
     .png()
     .toBuffer();
 

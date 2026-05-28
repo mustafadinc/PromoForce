@@ -435,6 +435,7 @@ export type GenerateStoreSlideInput = {
   styleAnchorSlide?: number;
   visualTemplate?: VisualTemplateId;
   mockupColor?: string;
+  mockupPose?: import("@/lib/mockupPose").MockupPose;
 };
 
 export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput): AsyncGenerator<ImageStreamEvent> {
@@ -567,6 +568,8 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
         layoutStyle: input.layoutStyle,
         lockedTypography,
         mockupColor: input.mockupColor,
+        mockupPose: input.mockupPose ?? input.slidePlan?.mockupPose,
+        slideNumber: input.slidePlan?.slideNumber,
       });
 
   yield {

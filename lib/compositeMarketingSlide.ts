@@ -21,6 +21,30 @@ import {
   layoutScale,
   type CompositeLayoutProfile,
 } from "@/lib/compositeLayoutProfile";
+import {
+  buildPerspectivePhoneGeometry,
+  scalePerspectiveGeometry,
+  usesPerspectiveMockup,
+} from "@/lib/mockupPerspectiveGeometry";
+import { METALLIC_FRAME_W } from "@/lib/metallicIPhoneFrame";
+import { nudgePerspectiveStackX } from "@/lib/perspectiveDeviceWarp";
+import { renderPerspectiveDeviceLayers } from "@/lib/renderPerspectiveDevice";
+import {
+  applyMockupPlacementX,
+  mockupPoseScaleMultiplier,
+  perspectiveFrontWidthCap,
+  resolveCompositeMockupPose,
+  type MockupPose,
+} from "@/lib/mockupPose";
+import { computePerspectiveStackPlacement } from "@/lib/perspectiveStackPosition";
+import type { PerspectiveQuad } from "@/lib/mockupPerspectiveGeometry";
+import {
+  ASSET_DEVICE_ASPECT,
+  assetScreenQuad,
+  computeAssetDevicePlacement,
+  usesAssetMockup,
+} from "@/lib/assetMockup";
+import { renderAssetDeviceLayer } from "@/lib/renderAssetDevice";
 
 export { parseImageSize };
 export type { LockedTypography };
@@ -73,6 +97,8 @@ type CompositeMarketingSlideInput = {
   layoutStyle?: SlideLayoutStyle;
   lockedTypography?: LockedTypography;
   mockupColor?: string;
+  mockupPose?: MockupPose;
+  slideNumber?: number;
 };
 
 type PhoneLayout = {
@@ -85,6 +111,10 @@ type PhoneLayout = {
   screenW: number;
   screenH: number;
   screenRadius: number;
+  frontW: number;
+  mockupPose: MockupPose;
+  screenQuad?: PerspectiveQuad;
+  assetDevice?: boolean;
 };
 
 function escapeXml(value: string) {
@@ -96,13 +126,108 @@ function escapeXml(value: string) {
     .replace(/'/g, "&apos;");
 }
 
-function buildPhoneFrame(
-  phoneX: number,
-  phoneY: number,
-  phoneW: number,
-  phoneH: number,
+function buildPhoneLayout(
+  stackX: number,
+  stackY: number,
+  stackW: number,
+  stackH: number,
+  frontW: number,
+  mockupPose: MockupPose,
 ): PhoneLayout {
-  return computePhoneScreenLayout(phoneX, phoneY, phoneW, phoneH);
+  const rect = computePhoneScreenLayout(stackX + (stackW - frontW), stackY, frontW, stackH);
+  if (!usesPerspectiveMockup(mockupPose.orientation)) {
+    return { ...rect, phoneX: stackX, phoneW: stackW, phoneH: stackH, frontW, mockupPose };
+  }
+
+  const geo = buildPerspectivePhoneGeometry(mockupPose.orientation);
+  const scale = frontW / METALLIC_FRAME_W;
+  const { screen } = scalePerspectiveGeometry(geo, scale, stackX, stackY);
+
+  return {
+    ...rect,
+    phoneX: stackX,
+    phoneY: stackY,
+    phoneW: stackW,
+    phoneH: stackH,
+    frontW,
+    mockupPose,
+    screenQuad: screen,
+  };
+}
+
+function getAssetPhoneLayout(
+  width: number,
+  height: number,
+  textBlockBottom: number,
+  reserveBottom: number,
+  profile: CompositeLayoutProfile,
+  mockupPose: MockupPose,
+): PhoneLayout {
+  const scale = layoutScale(width, height, profile);
+  const sizeMult = mockupPoseScaleMultiplier(mockupPose);
+  const placement =
+    mockupPose.placement === "left"
+      ? "left"
+      : mockupPose.placement === "center"
+        ? "center"
+        : "right";
+
+  let targetDeviceW = Math.round(width * profile.phoneWidthRatio * sizeMult);
+  const capW = perspectiveFrontWidthCap(width, mockupPose);
+  if (targetDeviceW > capW) targetDeviceW = capW;
+
+  let topReserve: number;
+  let bottomMargin: number;
+  let edgeInset: number;
+
+  if (profile.format === "landscape") {
+    const sideMargin = Math.round(28 * scale);
+    edgeInset = sideMargin;
+    const bandH = height - sideMargin * 2;
+    const centeredTop = Math.max(0, (bandH - targetDeviceW * ASSET_DEVICE_ASPECT) / 2);
+    topReserve = Math.round(sideMargin + centeredTop);
+    bottomMargin = Math.round(sideMargin + centeredTop);
+  } else {
+    const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
+    edgeInset = Math.round(width * 0.055);
+    topReserve = textBlockBottom + MIN_TEXT_DEVICE_GAP;
+    bottomMargin =
+      Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), reserveBottom) + chinClearance;
+  }
+
+  const placed = computeAssetDevicePlacement({
+    canvasW: width,
+    canvasH: height,
+    placement,
+    targetDeviceW,
+    topReserve,
+    bottomMargin,
+    edgeInset,
+  });
+
+  const screenQuad = assetScreenQuad(
+    mockupPose.orientation,
+    placed.deviceW,
+    placed.deviceH,
+    placed.originX,
+    placed.originY,
+  ) as unknown as PerspectiveQuad;
+
+  return {
+    phoneX: placed.originX,
+    phoneY: placed.originY,
+    phoneW: placed.deviceW,
+    phoneH: placed.deviceH,
+    screenX: placed.originX,
+    screenY: placed.originY,
+    screenW: placed.deviceW,
+    screenH: placed.deviceH,
+    screenRadius: 0,
+    frontW: placed.deviceW,
+    mockupPose,
+    screenQuad,
+    assetDevice: true,
+  };
 }
 
 function getPhoneLayout(
@@ -111,13 +236,19 @@ function getPhoneLayout(
   textBlockBottom: number,
   reserveBottom: number,
   profile: CompositeLayoutProfile,
+  mockupPose: MockupPose,
 ): PhoneLayout {
+  if (usesAssetMockup(mockupPose.orientation)) {
+    return getAssetPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose);
+  }
+
   const scale = layoutScale(width, height, profile);
+  const sizeMult = mockupPoseScaleMultiplier(mockupPose);
 
   if (profile.format === "landscape") {
     const sideMargin = Math.round(28 * scale);
     const maxPhoneH = height - sideMargin * 2;
-    let phoneW = Math.round(width * profile.phoneWidthRatio);
+    let phoneW = Math.round(width * profile.phoneWidthRatio * sizeMult);
     let phoneH = Math.round(phoneW * FRAME_ASPECT);
 
     if (phoneH > maxPhoneH) {
@@ -125,12 +256,41 @@ function getPhoneLayout(
       phoneW = Math.round(phoneH / FRAME_ASPECT);
     }
 
-    phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio), phoneW);
+    phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio * sizeMult), phoneW);
     phoneH = Math.round(phoneW * FRAME_ASPECT);
 
-    const phoneX = width - sideMargin - phoneW;
-    const phoneY = Math.round((height - phoneH) / 2);
-    return buildPhoneFrame(phoneX, phoneY, phoneW, phoneH);
+    const frontW = phoneW;
+    const frontH = phoneH;
+    const geo = buildPerspectivePhoneGeometry(mockupPose.orientation);
+    const sc = frontW / METALLIC_FRAME_W;
+    const stackH = Math.ceil((geo.bounds.maxY - geo.bounds.minY) * sc);
+    const stackW = Math.ceil((geo.bounds.maxX - geo.bounds.minX) * sc);
+    const centerY = Math.round((height - stackH) / 2);
+    const placement =
+      mockupPose.placement === "left"
+        ? "left"
+        : mockupPose.placement === "center"
+          ? "center"
+          : "right";
+    let stackX: number;
+    let stackY: number;
+    if (usesPerspectiveMockup(mockupPose.orientation)) {
+      const placed = computePerspectiveStackPlacement(geo, sc, width, placement, {
+        bottomY: centerY + stackH,
+        edgeInsetPx: sideMargin,
+      });
+      stackY = placed.stackY;
+      stackX = nudgePerspectiveStackX(geo, sc, placed.stackX, stackY, width, sideMargin);
+    } else {
+      stackX =
+        mockupPose.placement === "left"
+          ? sideMargin
+          : mockupPose.placement === "center"
+            ? Math.round((width - frontW) / 2)
+            : width - sideMargin - frontW;
+      stackY = centerY;
+    }
+    return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, mockupPose);
   }
 
   const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
@@ -140,8 +300,8 @@ function getPhoneLayout(
   const bottomBound = height - bottomMargin;
   const availableH = Math.max(0, bottomBound - topBound);
 
-  const preferredPhoneW = Math.round(width * profile.phoneWidthRatio);
-  const minPhoneW = Math.round(width * profile.minPhoneWidthRatio);
+  const preferredPhoneW = Math.round(width * profile.phoneWidthRatio * sizeMult);
+  const minPhoneW = Math.round(width * profile.minPhoneWidthRatio * sizeMult);
   const maxPhoneWFromHeight =
     availableH > 0 ? Math.floor(availableH / FRAME_ASPECT) : preferredPhoneW;
 
@@ -149,9 +309,16 @@ function getPhoneLayout(
   if (phoneW < minPhoneW && maxPhoneWFromHeight >= minPhoneW) {
     phoneW = minPhoneW;
   }
-  phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio * 0.92), phoneW);
+  phoneW = Math.max(Math.round(width * profile.minPhoneWidthRatio * 0.92 * sizeMult), phoneW);
   if (maxPhoneWFromHeight > 0) {
     phoneW = Math.min(phoneW, maxPhoneWFromHeight);
+  }
+
+  if (usesPerspectiveMockup(mockupPose.orientation)) {
+    const capW = perspectiveFrontWidthCap(width, mockupPose);
+    if (phoneW > capW) {
+      phoneW = capW;
+    }
   }
 
   let phoneH = Math.floor(phoneW * FRAME_ASPECT);
@@ -160,13 +327,44 @@ function getPhoneLayout(
     phoneW = Math.floor(phoneH / FRAME_ASPECT);
   }
 
-  const phoneY = Math.max(topBound, bottomBound - phoneH);
-  const phoneX = Math.round((width - phoneW) / 2);
-  return buildPhoneFrame(phoneX, phoneY, phoneW, phoneH);
+  const frontH = phoneH;
+  const frontW = phoneW;
+  const geo = buildPerspectivePhoneGeometry(mockupPose.orientation);
+  const geoScale = frontW / METALLIC_FRAME_W;
+  const stackH = usesPerspectiveMockup(mockupPose.orientation)
+    ? Math.ceil((geo.bounds.maxY - geo.bounds.minY) * geoScale)
+    : frontH;
+  const stackW = usesPerspectiveMockup(mockupPose.orientation)
+    ? Math.ceil((geo.bounds.maxX - geo.bounds.minX) * geoScale)
+    : frontW;
+  const frontY = Math.max(topBound, bottomBound - stackH);
+
+  const insetPx = Math.round(width * 0.055);
+  let stackX: number;
+  let stackY: number;
+  if (usesPerspectiveMockup(mockupPose.orientation)) {
+    const placed = computePerspectiveStackPlacement(geo, geoScale, width, mockupPose.placement, {
+      bottomY: frontY + stackH,
+      edgeInsetPx: insetPx,
+    });
+    stackY = placed.stackY;
+    stackX = nudgePerspectiveStackX(geo, geoScale, placed.stackX, stackY, width, insetPx);
+  } else {
+    stackX =
+      mockupPose.placement !== "center"
+        ? applyMockupPlacementX(Math.round((width - frontW) / 2), frontW, width, mockupPose.placement)
+        : Math.round((width - frontW) / 2);
+    stackY = frontY;
+  }
+
+  return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, mockupPose);
 }
 
 async function fitScreenshotToScreen(screenshot: Buffer, layout: PhoneLayout) {
   const rotated = await sharp(screenshot).rotate().png().toBuffer();
+  if (layout.screenQuad) {
+    return rotated;
+  }
   return resizeScreenshotToScreenWidth(rotated, layout.screenW, layout.screenH);
 }
 
@@ -449,23 +647,28 @@ async function buildTextOverlaySvg(input: {
 }
 
 function buildPhoneGlowSvg(layout: PhoneLayout, width: number, height: number, accentColor: string) {
-  const cx = layout.phoneX + layout.phoneW / 2;
-  const cy = layout.phoneY + layout.phoneH * 0.45;
+  const uses3d = usesPerspectiveMockup(layout.mockupPose.orientation);
+  const yaw = layout.mockupPose.orientation === "tilt_right" ? 1 : layout.mockupPose.orientation === "tilt_left" ? -1 : 0;
+  const cx = layout.phoneX + layout.phoneW * (0.5 + yaw * 0.08);
+  const cy = layout.phoneY + layout.phoneH * (uses3d ? 0.52 : 0.45);
+  const rx = Math.round(layout.phoneW * (uses3d ? 0.72 : 0.58));
+  const ry = Math.round(layout.phoneH * (uses3d ? 0.42 : 0.35));
+  const opacity = uses3d ? 0.34 : 0.22;
 
   return Buffer.from(`
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <radialGradient id="phoneGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="${accentColor}" stop-opacity="0.22"/>
+      <stop offset="0%" stop-color="${accentColor}" stop-opacity="${opacity}"/>
+      <stop offset="55%" stop-color="${accentColor}" stop-opacity="${(opacity * 0.35).toFixed(2)}"/>
       <stop offset="100%" stop-color="${accentColor}" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <ellipse cx="${cx}" cy="${cy}" rx="${Math.round(layout.phoneW * 0.58)}" ry="${Math.round(layout.phoneH * 0.35)}" fill="url(#phoneGlow)"/>
+  <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#phoneGlow)"/>
 </svg>`);
 }
 
-async function compositeDeviceFrame(
-  base: Buffer,
+async function buildPhoneStackLayer(
   layout: PhoneLayout,
   screenBuffer: Buffer,
   width: number,
@@ -473,13 +676,65 @@ async function compositeDeviceFrame(
   accentColor: string,
   mockupColor?: string,
 ) {
-  const frameBuffer = await getDeviceFrameBuffer(mockupColor);
-  const frameW = layout.phoneW;
-  const frameH = layout.phoneH;
-
-  const resizedFrame = await sharp(frameBuffer).resize(frameW, frameH, { fit: "fill" }).png().toBuffer();
-
+  const orientation = layout.mockupPose.orientation;
   const phoneGlow = await sharp(buildPhoneGlowSvg(layout, width, height, accentColor)).png().toBuffer();
+
+  if (layout.assetDevice) {
+    const device = await renderAssetDeviceLayer(
+      screenBuffer,
+      orientation,
+      layout.phoneW,
+      layout.phoneH,
+    );
+
+    return sharp({
+      create: {
+        width,
+        height,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        { input: phoneGlow, top: 0, left: 0 },
+        { input: device.buffer, top: layout.phoneY, left: layout.phoneX },
+      ])
+      .png()
+      .toBuffer();
+  }
+
+  if (usesPerspectiveMockup(orientation)) {
+    const device = await renderPerspectiveDeviceLayers(
+      screenBuffer,
+      orientation,
+      layout.frontW,
+      layout.phoneX,
+      layout.phoneY,
+      mockupColor,
+    );
+
+    return sharp({
+      create: {
+        width,
+        height,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([
+        { input: phoneGlow, top: 0, left: 0 },
+        { input: device.screen.buffer, top: device.screen.top, left: device.screen.left },
+        { input: device.frame.buffer, top: device.frame.top, left: device.frame.left },
+      ])
+      .png()
+      .toBuffer();
+  }
+
+  const frameBuffer = await getDeviceFrameBuffer(mockupColor, "upright");
+  const resizedFrame = await sharp(frameBuffer)
+    .resize(layout.frontW, layout.phoneH, { fit: "fill" })
+    .png()
+    .toBuffer();
 
   const screenLayer = await sharp({
     create: {
@@ -493,7 +748,14 @@ async function compositeDeviceFrame(
     .png()
     .toBuffer();
 
-  return sharp(base)
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
     .composite([
       { input: phoneGlow, top: 0, left: 0 },
       { input: screenLayer, top: 0, left: 0 },
@@ -501,6 +763,27 @@ async function compositeDeviceFrame(
     ])
     .png()
     .toBuffer();
+}
+
+async function compositeDeviceFrame(
+  base: Buffer,
+  layout: PhoneLayout,
+  screenBuffer: Buffer,
+  width: number,
+  height: number,
+  accentColor: string,
+  mockupColor?: string,
+) {
+  const phoneStack = await buildPhoneStackLayer(
+    layout,
+    screenBuffer,
+    width,
+    height,
+    accentColor,
+    mockupColor,
+  );
+
+  return sharp(base).composite([{ input: phoneStack, top: 0, left: 0 }]).png().toBuffer();
 }
 
 export async function compositeMarketingSlide({
@@ -521,7 +804,10 @@ export async function compositeMarketingSlide({
   layoutStyle,
   lockedTypography,
   mockupColor,
+  mockupPose: rawMockupPose,
+  slideNumber,
 }: CompositeMarketingSlideInput): Promise<Buffer> {
+  const mockupPose = resolveCompositeMockupPose(rawMockupPose, slideNumber);
   const profile = getCompositeLayoutProfile(width, height);
   const hasPills =
     profile.showFeaturePills &&
@@ -563,7 +849,7 @@ export async function compositeMarketingSlide({
   }
 
   const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile);
+  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose);
   const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
   const withDevice = await compositeDeviceFrame(
     base,
