@@ -1,6 +1,6 @@
 export type MockupOrientation = "upright" | "tilt_left" | "tilt_right";
 export type MockupScale = "compact" | "standard" | "hero";
-export type MockupPlacement = "center" | "left" | "right";
+export type MockupPlacement = "center" | "left" | "right" | "auto";
 
 export type MockupPose = {
   orientation: MockupOrientation;
@@ -20,12 +20,12 @@ const SCALE_MULTIPLIER: Record<MockupScale, number> = {
   hero: 1.08,
 };
 
-/** Per-slide ASO poses — screenshot slides use 3D showcase (SWAY-style). */
+/** Per-slide ASO poses — varied angles; slide 5 is CTA (no mockup in composite). */
 export const SLIDE_MOCKUP_POSE_PRESETS: MockupPose[] = [
-  { orientation: "tilt_right", scale: "hero", placement: "right" },
-  { orientation: "tilt_right", scale: "standard", placement: "right" },
-  { orientation: "tilt_left", scale: "standard", placement: "left" },
-  { orientation: "tilt_right", scale: "standard", placement: "center" },
+  { orientation: "tilt_right", scale: "hero", placement: "auto" },
+  { orientation: "tilt_left", scale: "standard", placement: "auto" },
+  { orientation: "tilt_right", scale: "standard", placement: "auto" },
+  { orientation: "tilt_left", scale: "compact", placement: "auto" },
   { orientation: "upright", scale: "compact", placement: "center" },
 ];
 
@@ -62,7 +62,10 @@ export function normalizeMockupPose(raw: unknown, slideNumber?: number): MockupP
         ? row.scale
         : fallback.scale,
     placement:
-      row.placement === "center" || row.placement === "left" || row.placement === "right"
+      row.placement === "center" ||
+      row.placement === "left" ||
+      row.placement === "right" ||
+      row.placement === "auto"
         ? row.placement
         : fallback.placement,
   };
@@ -83,7 +86,7 @@ export function mockupPoseScaleMultiplier(pose: MockupPose): number {
 /** Max front-face width on canvas for 3D tilts (SWAY-style, not full-bleed flat paste). */
 export function perspectiveFrontWidthCap(canvasWidth: number, pose: MockupPose): number {
   const ratio =
-    pose.scale === "hero" ? 0.7 : pose.scale === "compact" ? 0.52 : 0.62;
+    pose.scale === "hero" ? 0.58 : pose.scale === "compact" ? 0.52 : 0.62;
   return Math.round(canvasWidth * ratio * mockupPoseScaleMultiplier(pose));
 }
 
@@ -91,7 +94,7 @@ export function applyMockupPlacementX(
   _phoneX: number,
   phoneW: number,
   canvasWidth: number,
-  placement: MockupPlacement,
+  placement: Exclude<MockupPlacement, "auto">,
 ): number {
   const sideInset = Math.round(canvasWidth * 0.055);
   if (placement === "left") {
@@ -104,6 +107,9 @@ export function applyMockupPlacementX(
 }
 
 export function mockupPoseCompositionHint(pose: MockupPose): string {
+  const effectivePlacement =
+    pose.placement === "auto" ? "right (default until subject-aware resolve)" : pose.placement;
+
   const scaleLine =
     pose.scale === "compact"
       ? "Phone mockup will be SMALLER — leave generous negative space around the device; background detail should read clearly."
@@ -112,10 +118,10 @@ export function mockupPoseCompositionHint(pose: MockupPose): string {
         : "Phone mockup at STANDARD size — balance headline zone with an open center-lower area.";
 
   const placementLine =
-    pose.placement === "left"
-      ? "Device sits on the LEFT — compose the RIGHT half with rich environment and bokeh."
-      : pose.placement === "right"
-        ? "Device sits on the RIGHT — compose the LEFT half with lifestyle depth (SWAY hero: person/desk on left)."
+    effectivePlacement === "left"
+      ? "Device sits on the LEFT — compose the RIGHT half with rich environment and bokeh. NO faces in the left device zone."
+      : effectivePlacement === "right"
+        ? "Device sits on the RIGHT — compose the LEFT half with lifestyle depth. Person/desk MUST be in the LEFT third only."
         : "Device is CENTERED — keep sides moderately calm; strongest interest can sit above or below the device band.";
 
   const tiltLine =
@@ -126,6 +132,14 @@ export function mockupPoseCompositionHint(pose: MockupPose): string {
         : "Device faces camera flat-on — symmetric front view.";
 
   return [scaleLine, placementLine, tiltLine].join(" ");
+}
+
+/** Resolve auto placement to a concrete side for layout/prompts. */
+export function resolveMockupPlacement(pose: MockupPose): Exclude<MockupPlacement, "auto"> {
+  if (pose.placement === "auto") {
+    return pose.orientation === "tilt_left" ? "left" : "right";
+  }
+  return pose.placement;
 }
 
 export const MOCKUP_ORIENTATION_OPTIONS: Array<{ value: MockupOrientation; label: string }> = [
@@ -141,6 +155,7 @@ export const MOCKUP_SCALE_OPTIONS: Array<{ value: MockupScale; label: string }> 
 ];
 
 export const MOCKUP_PLACEMENT_OPTIONS: Array<{ value: MockupPlacement; label: string }> = [
+  { value: "auto", label: "Auto (subject-aware)" },
   { value: "center", label: "Center" },
   { value: "left", label: "Show right bg" },
   { value: "right", label: "Show left bg" },

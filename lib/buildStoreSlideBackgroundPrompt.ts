@@ -1,13 +1,19 @@
 import type { AppProfile, BackgroundTreatment, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
 import { buildScreenshotColorHarmonyBlock } from "@/lib/applyScreenshotColorHarmony";
 import {
+  backgroundPromptAestheticsBlock,
+  backgroundPromptBannedAestheticsBlock,
   backgroundPromptCompositionBlock,
   backgroundPromptExclusionsBlock,
   backgroundPromptQualityBlock,
 } from "@/lib/buildBackgroundPromptShared";
 import { getAppStoreGenerationSize } from "@/lib/appStoreImageSizes";
+import {
+  appendPlacementToSceneDescription,
+  placementAwarePersonTreatment,
+} from "@/lib/mockupKeepOutZone";
+import { normalizeMockupPose, resolveMockupPlacement, type MockupPose } from "@/lib/mockupPose";
 import { resolveBackgroundScene } from "@/lib/storeCreativeDirector";
-import { normalizeMockupPose } from "@/lib/mockupPose";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 const treatmentPrompts: Record<BackgroundTreatment, string> = {
@@ -16,7 +22,7 @@ const treatmentPrompts: Record<BackgroundTreatment, string> = {
   lifestyle_environment:
     "NO people, NO faces, NO hands. Environment-only scene: desk, workspace, nature path, or interior atmosphere. Props and lighting tell the story.",
   abstract_brand:
-    "Premium abstract brand world: glowing neon arcs, soft particles, dark cinematic space, subtle depth — inspired by top App Store hero packs. NO people. NO random unrelated objects (zen stones, mountains, water ripples).",
+    "Premium abstract brand world for CTA/accent slides ONLY: restrained gradient depth, soft light rays — NO people. NO neon grids, rings, or particle tunnels.",
   cta_brand:
     "Premium download CTA atmosphere: cinematic brand gradient depth, soft light rays, subtle energy particles in accent color. NO people. This is a BACKGROUND PLATE ONLY — never a finished marketing poster.",
 };
@@ -32,7 +38,7 @@ export function buildStoreSlideBackgroundPrompt(
   profile: AppProfile,
   strategy: StrategyBrief,
   slide: StoreSlidePlan,
-  options?: { styleAnchorHint?: string },
+  options?: { styleAnchorHint?: string; mockupPose?: MockupPose },
 ) {
   const beatLabel = storeSlideBeatMeta[slide.asoBeat].label;
   const sizeLabel = getAppStoreGenerationSize().replace("x", "×");
@@ -40,10 +46,23 @@ export function buildStoreSlideBackgroundPrompt(
   const treatment = scene?.treatment || slide.backgroundTreatment;
   const isCtaSlide = slide.asoBeat === "download_cta";
   const usesScreenshot = slide.screenshotUsage !== "none" && !isCtaSlide;
-  const mockupPose = normalizeMockupPose(slide.mockupPose, slide.slideNumber);
+  const mockupPose = normalizeMockupPose(options?.mockupPose ?? slide.mockupPose, slide.slideNumber);
+  const resolvedPlacement = resolveMockupPlacement(mockupPose);
 
-  const sceneDescription =
-    scene?.sceneDescription || slide.visualVariant || slide.backgroundRationale || storeSlideBeatMeta[slide.asoBeat].visualVariantHint;
+  const rawSceneDescription =
+    scene?.sceneDescription ||
+    slide.visualVariant ||
+    slide.backgroundRationale ||
+    storeSlideBeatMeta[slide.asoBeat].visualVariantHint;
+
+  const sceneDescription = usesScreenshot
+    ? appendPlacementToSceneDescription(rawSceneDescription, { ...mockupPose, placement: resolvedPlacement })
+    : rawSceneDescription;
+
+  const treatmentLine = placementAwarePersonTreatment(treatmentPrompts[treatment], {
+    ...mockupPose,
+    placement: resolvedPlacement,
+  });
 
   return [
     `Premium App Store BACKGROUND ONLY. Portrait ${sizeLabel}. ChatGPT Images 2.0 editorial quality.`,
@@ -52,20 +71,28 @@ export function buildStoreSlideBackgroundPrompt(
     isCtaSlide ? ctaBackgroundExclusions : "",
     "",
     `App: "${profile.appName}" (${profile.category}). Audience: ${profile.targetAudience || "mobile users"}.`,
+    strategy.locale ? `Market locale: ${strategy.locale} — visuals should feel native to this market.` : "",
     `Slide ${slide.slideNumber}/5 — ${beatLabel}. Message context: "${slide.headline}".`,
+    slide.keywordTheme ? `ASO keyword theme for this slide: "${slide.keywordTheme}" (context only — no text in image).` : "",
     scene ? `Background scene "${scene.label}" (shared by slides ${scene.sharedBySlides.join(", ")}).` : "",
     slide.backgroundRationale ? `Creative rationale: ${slide.backgroundRationale}` : "",
     options?.styleAnchorHint && slide.slideNumber !== strategy.styleAnchorSlide
-      ? `Match visual polish and mood of style anchor slide ${strategy.styleAnchorSlide}: ${options.styleAnchorHint}`
-      : "",
+      ? `Match visual polish, color grade, and photoshoot mood of style anchor slide ${strategy.styleAnchorSlide}: ${options.styleAnchorHint}. Same brand world — not a different aesthetic.`
+      : slide.slideNumber > 1 && slide.slideNumber <= 4
+        ? `Maintain set cohesion with style anchor slide ${strategy.styleAnchorSlide || 1} — same color grade and photoshoot family.`
+        : "",
+    "",
+    backgroundPromptBannedAestheticsBlock(),
     "",
     "TREATMENT:",
-    treatmentPrompts[treatment],
+    treatmentLine,
     "",
     "SCENE DESCRIPTION:",
     sceneDescription,
     "",
     backgroundPromptQualityBlock(strategy.colorProfile),
+    "",
+    backgroundPromptAestheticsBlock(strategy.accentColor, strategy.brandColor),
     "",
     buildScreenshotColorHarmonyBlock(strategy.colorProfile),
     "",
@@ -77,8 +104,8 @@ export function buildStoreSlideBackgroundPrompt(
     "",
     backgroundPromptCompositionBlock(usesScreenshot, mockupPose),
     "",
-    "Avoid generic stock aesthetics. Scene must feel intentional and premium for this app category.",
-    "CRITICAL: No flat gray, white, or empty backgrounds. Use rich color, depth, and environmental detail.",
+    "Avoid generic stock aesthetics and AI slop. Scene must feel intentional, human-crafted, and premium.",
+    "CRITICAL: No flat gray, white, or empty backgrounds. Use rich but controlled color, depth, and environmental detail.",
   ]
     .filter(Boolean)
     .join("\n");

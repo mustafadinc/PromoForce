@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { CopyToast } from "@/components/CopyToast";
 import { ExportStatusStrip } from "@/components/ExportStatusStrip";
+import { LiveSlideEditor } from "@/components/LiveSlideEditor";
 import { StoreSlideExportCard } from "@/components/StoreSlideExportCard";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import type {
+  AppProfile,
   GeneratedSlide,
+  SlideEditorState,
   StoreSlideRegenerateMode,
   StoreSlideRegenerateOptions,
   StrategyBrief,
@@ -23,6 +26,8 @@ import type { SetCoherenceAudit } from "@/lib/agents/setCoherenceAgent";
 type StoreSetGalleryProps = {
   slides: GeneratedSlide[];
   strategy?: StrategyBrief | null;
+  appProfile?: AppProfile | null;
+  screenshotPreviews?: Array<{ index: number; previewUrl: string }>;
   progressLabel: string;
   partialPreviewUrl?: string;
   regeneratingSlideNumber?: number | null;
@@ -35,11 +40,23 @@ type StoreSetGalleryProps = {
     options?: StoreSlideRegenerateOptions,
   ) => void;
   onSelectVariant?: (slideNumber: number, variantId: string) => void;
+  onUpdateSlideFromEditor?: (
+    slideNumber: number,
+    update: {
+      dataUrl: string;
+      editorState: SlideEditorState;
+      headline: string;
+      subheadline: string;
+    },
+  ) => void;
+  onRevertSlideToOriginal?: (slideNumber: number) => void;
 };
 
 export function StoreSetGallery({
   slides,
   strategy = null,
+  appProfile = null,
+  screenshotPreviews = [],
   progressLabel,
   partialPreviewUrl,
   regeneratingSlideNumber = null,
@@ -48,6 +65,8 @@ export function StoreSetGallery({
   onCancel,
   onRegenerateSlide,
   onSelectVariant,
+  onUpdateSlideFromEditor,
+  onRevertSlideToOriginal,
 }: StoreSetGalleryProps) {
   const [exportPreset, setExportPreset] = useState<AppStoreExportPreset>("iphone_67");
   const [lintMessage, setLintMessage] = useState<string | null>(null);
@@ -56,6 +75,7 @@ export function StoreSetGallery({
   const [coherenceAudit, setCoherenceAudit] = useState<SetCoherenceAudit | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [editingSlideNumber, setEditingSlideNumber] = useState<number | null>(null);
   const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
 
   const readability = useMemo(
@@ -108,6 +128,19 @@ export function StoreSetGallery({
     link.download = `app-store-slide-${slide.slideNumber}-${APP_STORE_EXPORT_WIDTH}x${APP_STORE_EXPORT_HEIGHT}.png`;
     link.click();
   };
+
+  const editingSlide = editingSlideNumber
+    ? slides.find((slide) => slide.slideNumber === editingSlideNumber) ?? null
+    : null;
+  const editingSlidePlan =
+    editingSlide && strategy
+      ? strategy.slides.find((slide) => slide.slideNumber === editingSlide.slideNumber) ?? null
+      : null;
+  const editingScreenshotUrl =
+    editingSlidePlan?.screenshotIndex !== null && editingSlidePlan?.screenshotIndex !== undefined
+      ? screenshotPreviews.find((shot) => shot.index === editingSlidePlan.screenshotIndex)?.previewUrl ?? null
+      : null;
+  const editingBackgroundUrl = editingSlide?.backgroundDataUrl ?? editingSlide?.dataUrl ?? "";
 
   const downloadAll = () => {
     slides.forEach((slide, index) => {
@@ -306,9 +339,37 @@ export function StoreSetGallery({
             onCopyHeadline={(text) => void copyText(text, "Headline copied")}
             onRegenerateSlide={onRegenerateSlide}
             onSelectVariant={onSelectVariant}
+            onOpenLiveEditor={
+              onUpdateSlideFromEditor && strategy ? (slide) => setEditingSlideNumber(slide.slideNumber) : undefined
+            }
           />
         ))}
       </div>
+
+      {editingSlide && editingSlidePlan && strategy && onUpdateSlideFromEditor ? (
+        <LiveSlideEditor
+          slide={editingSlide}
+          slidePlan={editingSlidePlan}
+          strategy={strategy}
+          appProfile={appProfile}
+          screenshotUrl={editingScreenshotUrl}
+          backgroundUrl={editingBackgroundUrl}
+          sourceDataUrl={editingSlide.sourceDataUrl ?? editingSlide.dataUrl}
+          onClose={() => setEditingSlideNumber(null)}
+          onRevertToOriginal={
+            onRevertSlideToOriginal
+              ? () => {
+                  onRevertSlideToOriginal(editingSlide.slideNumber);
+                  setEditingSlideNumber(null);
+                }
+              : undefined
+          }
+          onSave={(update) => {
+            onUpdateSlideFromEditor(editingSlide.slideNumber, update);
+            setEditingSlideNumber(null);
+          }}
+        />
+      ) : null}
 
       <CopyToast message={copyMessage} onDismiss={clearCopyMessage} />
     </section>

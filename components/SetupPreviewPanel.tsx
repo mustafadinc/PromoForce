@@ -2,13 +2,16 @@
 
 import { Sparkles } from "lucide-react";
 import { UploadedScreenMockupRow } from "@/components/UploadedScreenMockupRow";
-import type { AppProfile, CampaignType, UploadedScreenshot } from "@/lib/campaignTypes";
+import type { AppProfile, CampaignType, LocaleCode, LocaleScreenshotsMap, UploadedScreenshot } from "@/lib/campaignTypes";
 import { campaignTypeOptions } from "@/lib/campaignTypes";
+import { getLocaleDefinition } from "@/lib/locales";
 
 export type SetupDraft = {
   campaignType: CampaignType;
   profile: AppProfile;
   screenshots: UploadedScreenshot[];
+  screenshotsByLocale?: LocaleScreenshotsMap;
+  selectedLocales?: LocaleCode[];
   autopilotConfig?: { duration: 7 | 30; startDate: string };
 };
 
@@ -24,12 +27,23 @@ const workflowSteps = [
 ];
 
 function readinessChecks(draft: SetupDraft) {
-  return [
+  const base = [
     { label: "App name", done: Boolean(draft.profile.appName.trim()) },
     { label: "Category", done: Boolean(draft.profile.category.trim()) },
     { label: "Description", done: Boolean(draft.profile.description.trim()) },
-    { label: "Screenshots", done: draft.screenshots.length > 0 },
   ];
+
+  if (draft.campaignType === "app_store" && draft.selectedLocales?.length) {
+    return [
+      ...base,
+      ...draft.selectedLocales.map((locale) => ({
+        label: `Screenshots (${getLocaleDefinition(locale).label})`,
+        done: (draft.screenshotsByLocale?.[locale]?.length ?? 0) > 0,
+      })),
+    ];
+  }
+
+  return [...base, { label: "Screenshots", done: draft.screenshots.length > 0 }];
 }
 
 function SetupReadinessBar({
@@ -67,7 +81,20 @@ export function SetupPreviewPanel({ draft, isPlanning }: SetupPreviewPanelProps)
   const checks = readinessChecks(draft);
   const readyCount = checks.filter((check) => check.done).length;
   const allReady = readyCount === checks.length;
-  const hasScreens = draft.screenshots.length > 0;
+  const isAppStore = draft.campaignType === "app_store";
+  const localeEntries =
+    isAppStore && draft.selectedLocales?.length
+      ? draft.selectedLocales
+          .map((locale) => ({
+            locale,
+            shots: draft.screenshotsByLocale?.[locale] ?? [],
+          }))
+          .filter((entry) => entry.shots.length > 0)
+      : [];
+  const hasScreens = isAppStore ? localeEntries.length > 0 : draft.screenshots.length > 0;
+  const totalScreens = isAppStore
+    ? localeEntries.reduce((sum, entry) => sum + entry.shots.length, 0)
+    : draft.screenshots.length;
 
   return (
     <section className="pf-setup-preview">
@@ -86,13 +113,27 @@ export function SetupPreviewPanel({ draft, isPlanning }: SetupPreviewPanelProps)
             <div>
               <h2 className="pf-setup-preview-title">Uploaded screens</h2>
               <p className="pf-setup-preview-subtitle">
-                {draft.screenshots.length} screen{draft.screenshots.length === 1 ? "" : "s"} — check each
-                mockup before generating strategy.
+                {totalScreens} screen{totalScreens === 1 ? "" : "s"}
+                {isAppStore && localeEntries.length > 1
+                  ? ` across ${localeEntries.length} languages`
+                  : ""}{" "}
+                — check each mockup before generating strategy.
               </p>
             </div>
           </div>
           <div className="pf-setup-preview-main pf-setup-preview-main-gallery">
-            <UploadedScreenMockupRow screenshots={draft.screenshots} />
+            {isAppStore ? (
+              localeEntries.map(({ locale, shots }) => (
+                <div key={locale} className="pf-setup-locale-preview">
+                  <h3 className="pf-setup-locale-preview-title">
+                    {getLocaleDefinition(locale).label}
+                  </h3>
+                  <UploadedScreenMockupRow screenshots={shots} />
+                </div>
+              ))
+            ) : (
+              <UploadedScreenMockupRow screenshots={draft.screenshots} />
+            )}
           </div>
         </>
       ) : (

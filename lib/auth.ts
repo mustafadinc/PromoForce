@@ -22,8 +22,25 @@ export function isAuthConfigured() {
   return Boolean(process.env.AUTH_SECRET?.trim());
 }
 
+function resolveAuthSecret() {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (secret) return secret;
+
+  // Auth.js still needs a secret at init when middleware imports `auth`.
+  // Use a throwaway value when login is disabled or during local dev.
+  if (
+    process.env.AUTH_DISABLED === "1" ||
+    process.env.AUTH_DISABLED === "true" ||
+    process.env.NODE_ENV === "development"
+  ) {
+    return "dev-only-auth-secret-not-for-production";
+  }
+
+  return undefined;
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.AUTH_SECRET,
+  secret: resolveAuthSecret(),
   adapter: dbAdapter,
   providers: [
     Google({

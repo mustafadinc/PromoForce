@@ -40,7 +40,10 @@ import type {
   GeneratedSlideVariant,
   GeneratedSocialAsset,
   LockedTypography,
+  LocaleCode,
+  LocaleScreenshotsMap,
   SocialStrategyBrief,
+  SlideEditorState,
   StoreSlidePlan,
   StoreSlideRegenerateMode,
   StoreSlideRegenerateOptions,
@@ -49,6 +52,16 @@ import type {
 } from "@/lib/campaignTypes";
 import { isSocialReelsAsset } from "@/lib/campaignTypes";
 import { ensureSocialStrategyBrief } from "@/lib/socialStrategyNormalize";
+import {
+  auditSetCoherenceClient,
+  type SetCoherenceAudit,
+} from "@/lib/agents/setCoherenceAgent";
+import {
+  appendLocaleScreenshotsToFormData,
+  flattenLocaleScreenshots,
+  getScreenshotsForLocale,
+  normalizeLocaleScreenshotsMap,
+} from "@/lib/localeScreenshots";
 
 function jsonEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -74,7 +87,12 @@ export function useCampaignPipeline() {
   const [campaignType, setCampaignType] = useState<CampaignType>("app_store");
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [screenshots, setScreenshots] = useState<UploadedScreenshot[]>([]);
+  const [screenshotsByLocale, setScreenshotsByLocale] = useState<LocaleScreenshotsMap>({});
   const [storeStrategy, setStoreStrategy] = useState<StrategyBrief | null>(null);
+  const [storeStrategiesByLocale, setStoreStrategiesByLocale] = useState<
+    Partial<Record<LocaleCode, StrategyBrief>>
+  >({});
+  const [activeLocale, setActiveLocale] = useState<LocaleCode>("en");
   const [aiStoreStrategy, setAiStoreStrategy] = useState<StrategyBrief | null>(null);
   const [socialStrategy, setSocialStrategy] = useState<SocialStrategyBrief | null>(null);
   const [aiSocialStrategy, setAiSocialStrategy] = useState<SocialStrategyBrief | null>(null);
@@ -91,6 +109,9 @@ export function useCampaignPipeline() {
   const [progressLabel, setProgressLabel] = useState("");
   const [partialPreviewUrl, setPartialPreviewUrl] = useState("");
   const [regeneratingSlideNumber, setRegeneratingSlideNumber] = useState<number | null>(null);
+  const [coherenceAudit, setCoherenceAudit] = useState<SetCoherenceAudit | null>(null);
+  const [localeMismatchCount, setLocaleMismatchCount] = useState(0);
+  const [isAuditing, setIsAuditing] = useState(false);
   const [usageRefreshKey, setUsageRefreshKey] = useState(0);
   const generationAbortRef = useRef<AbortController | null>(null);
 
@@ -101,11 +122,15 @@ export function useCampaignPipeline() {
       const urlCampaign = readCampaignTypeFromLocation(window.location.search);
 
       if (restored) {
-        const { session, screenshots: restoredScreenshots } = restored;
+        const { session, screenshots: restoredScreenshots, screenshotsByLocale: restoredByLocale } =
+          restored;
         setCampaignType(urlCampaign ?? session.campaignType);
         setProfile(session.profile);
+        setScreenshotsByLocale(restoredByLocale);
         setScreenshots(restoredScreenshots);
         setStoreStrategy(session.storeStrategy);
+        setStoreStrategiesByLocale(session.storeStrategiesByLocale || {});
+        setActiveLocale(session.activeLocale || session.storeStrategy?.locale || "en");
         setAiStoreStrategy(session.aiStoreStrategy);
         setSocialStrategy(
           session.socialStrategy && session.profile
@@ -165,7 +190,10 @@ export function useCampaignPipeline() {
         campaignType,
         profile,
         screenshots,
+        screenshotsByLocale,
         storeStrategy,
+        storeStrategiesByLocale,
+        activeLocale,
         aiStoreStrategy,
         socialStrategy,
         aiSocialStrategy,
@@ -182,7 +210,10 @@ export function useCampaignPipeline() {
       campaignType,
       profile,
       screenshots,
+      screenshotsByLocale,
       storeStrategy,
+      storeStrategiesByLocale,
+      activeLocale,
       aiStoreStrategy,
       socialStrategy,
       aiSocialStrategy,
@@ -202,6 +233,30 @@ export function useCampaignPipeline() {
     const next = buildCampaignPipelineUrl(stepToPhase(step), campaignType);
     router.replace(next, { scroll: false });
   }, [sessionReady, sessionSnapshot, step, campaignType, router]);
+
+  const refreshCoherenceAudit = async (brief: StrategyBrief | null) => {
+    if (!brief) {
+      setCoherenceAudit(null);
+      return;
+    }
+    setIsAuditing(true);
+    try {
+      const audit = await auditSetCoherenceClient(brief);
+      setCoherenceAudit(audit);
+    } catch {
+      setCoherenceAudit(null);
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (campaignType !== "app_store" || !storeStrategy || step !== "strategy") return;
+    const timer = window.setTimeout(() => {
+      void refreshCoherenceAudit(storeStrategy);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [storeStrategy, campaignType, step]);
 
   const beginGeneration = () => {
     generationAbortRef.current?.abort();
@@ -268,12 +323,34 @@ export function useCampaignPipeline() {
     formData.append("category", profile.category);
     formData.append("description", profile.description);
     formData.append("targetAudience", profile.targetAudience);
+    if (profile.locales?.length) {
+      formData.append("locales", JSON.stringify(profile.locales));
+    }
+    if (profile.appTitle) formData.append("appTitle", profile.appTitle);
+    if (profile.appSubtitle) formData.append("appSubtitle", profile.appSubtitle);
+    if (profile.keywords) formData.append("keywords", profile.keywords);
+    if (profile.socialProof?.reviewQuotes?.length) {
+      formData.append("reviewQuotes", profile.socialProof.reviewQuotes.join("\n"));
+    }
+    if (profile.socialProof?.downloadCount) {
+      formData.append("downloadCount", profile.socialProof.downloadCount);
+    }
+    if (profile.socialProof?.rating) {
+      formData.append("rating", String(profile.socialProof.rating));
+    }
   };
 
-  const appendSlideScreenshot = (formData: FormData, screenshotIndex: number | null) => {
-    screenshots.forEach((item) => formData.append("screenshots", item.file));
+  const appendSlideScreenshot = (
+    formData: FormData,
+    screenshotIndex: number | null,
+    locale?: LocaleCode,
+  ) => {
+    const shots = locale
+      ? getScreenshotsForLocale(screenshotsByLocale, locale, screenshots)
+      : screenshots;
+    shots.forEach((item) => formData.append("screenshots", item.file));
     if (screenshotIndex === null || screenshotIndex < 0) return;
-    const shot = screenshots[screenshotIndex];
+    const shot = shots[screenshotIndex];
     if (shot) formData.append("screenshot", shot.file);
   };
 
@@ -285,18 +362,36 @@ export function useCampaignPipeline() {
   const createStrategy = async (
     nextCampaignType: CampaignType,
     nextProfile: AppProfile,
-    nextScreenshots: UploadedScreenshot[],
+    input: UploadedScreenshot[] | LocaleScreenshotsMap,
     autopilotConfig?: AutopilotConfig,
+    localeMismatchWarnings?: Partial<Record<LocaleCode, string>>,
   ) => {
+    const isAppStore = nextCampaignType === "app_store";
+    const locales = nextProfile.locales?.length ? nextProfile.locales : (["en"] as LocaleCode[]);
+    const nextByLocale: LocaleScreenshotsMap = isAppStore
+      ? normalizeLocaleScreenshotsMap(
+          Array.isArray(input) ? { [locales[0]!]: input } : input,
+          locales,
+        )
+      : { en: Array.isArray(input) ? input : flattenLocaleScreenshots(input) };
+    const primaryLocale = locales[0] ?? "en";
+    const nextScreenshots = getScreenshotsForLocale(nextByLocale, primaryLocale, []);
+
     setIsPlanning(true);
     setErrorMessage("");
     setCampaignType(nextCampaignType);
     setProfile(nextProfile);
+    setLocaleMismatchCount(
+      localeMismatchWarnings ? Object.keys(localeMismatchWarnings).length : 0,
+    );
+    setScreenshotsByLocale(nextByLocale);
     setScreenshots(nextScreenshots);
     setGeneratedSlides([]);
     setGeneratedSocialAssets([]);
     setGeneratedCalendarPosts([]);
     setStoreStrategy(null);
+    setStoreStrategiesByLocale({});
+    setActiveLocale(nextProfile.locales?.[0] || "en");
     setAiStoreStrategy(null);
     setSocialStrategy(null);
     setAiSocialStrategy(null);
@@ -309,7 +404,26 @@ export function useCampaignPipeline() {
       formData.append("category", nextProfile.category);
       formData.append("description", nextProfile.description);
       formData.append("targetAudience", nextProfile.targetAudience);
-      nextScreenshots.forEach((item) => formData.append("screenshots", item.file));
+      if (nextProfile.locales?.length) {
+        formData.append("locales", JSON.stringify(nextProfile.locales));
+      }
+      if (nextProfile.appTitle) formData.append("appTitle", nextProfile.appTitle);
+      if (nextProfile.appSubtitle) formData.append("appSubtitle", nextProfile.appSubtitle);
+      if (nextProfile.keywords) formData.append("keywords", nextProfile.keywords);
+      if (nextProfile.socialProof?.reviewQuotes?.length) {
+        formData.append("reviewQuotes", nextProfile.socialProof.reviewQuotes.join("\n"));
+      }
+      if (nextProfile.socialProof?.downloadCount) {
+        formData.append("downloadCount", nextProfile.socialProof.downloadCount);
+      }
+      if (nextProfile.socialProof?.rating) {
+        formData.append("rating", String(nextProfile.socialProof.rating));
+      }
+      if (isAppStore) {
+        appendLocaleScreenshotsToFormData(formData, nextByLocale, locales);
+      } else {
+        nextScreenshots.forEach((item) => formData.append("screenshots", item.file));
+      }
 
       let endpoint = "/api/strategy/generate";
       if (nextCampaignType === "social_launch") {
@@ -336,8 +450,13 @@ export function useCampaignPipeline() {
       }
 
       if (nextCampaignType === "app_store") {
-        setStoreStrategy(result.strategy);
-        setAiStoreStrategy(result.strategy);
+        const strategies = (result.strategies || {}) as Partial<Record<LocaleCode, StrategyBrief>>;
+        const primary = (result.primaryLocale || nextProfile.locales?.[0] || "en") as LocaleCode;
+        setStoreStrategiesByLocale(strategies);
+        setActiveLocale(primary);
+        setStoreStrategy(result.strategy || strategies[primary] || null);
+        setAiStoreStrategy(result.strategy || strategies[primary] || null);
+        void refreshCoherenceAudit(result.strategy || strategies[primary] || null);
       } else if (nextCampaignType === "social_launch") {
         setSocialStrategy(result.strategy);
         setAiSocialStrategy(result.strategy);
@@ -375,11 +494,13 @@ export function useCampaignPipeline() {
       existingBackgroundDataUrl?: string;
       mockupColor?: string;
       mockupPose?: import("@/lib/mockupPose").MockupPose;
+      mockupAssetId?: import("@/lib/assetMockup").MockupAssetId;
     },
+    locale: LocaleCode = activeLocale,
   ) => {
     const formData = new FormData();
     appendProfileFields(formData);
-    appendSlideScreenshot(formData, slide.screenshotIndex);
+    appendSlideScreenshot(formData, slide.screenshotIndex, locale);
     formData.append("strategy", JSON.stringify(strategy));
     formData.append("slide", JSON.stringify(slide));
     formData.append("backgroundSceneCache", JSON.stringify(backgroundSceneCache));
@@ -405,6 +526,9 @@ export function useCampaignPipeline() {
     if (options?.mockupPose) {
       formData.append("mockupPose", JSON.stringify(options.mockupPose));
     }
+    if (options?.mockupAssetId) {
+      formData.append("mockupAssetId", options.mockupAssetId);
+    }
 
     const response = await fetch("/api/assets/generate-slide", { method: "POST", body: formData, signal });
     return consumeAssetStream(
@@ -419,7 +543,17 @@ export function useCampaignPipeline() {
   };
 
   const generateStoreSet = async (options?: { variantsPerSlide?: number }) => {
-    if (!profile || !storeStrategy) return;
+    const localeEntries = Object.entries(storeStrategiesByLocale).filter(
+      (entry): entry is [LocaleCode, StrategyBrief] => Boolean(entry[1]),
+    );
+    const strategiesToGenerate =
+      localeEntries.length > 0
+        ? localeEntries
+        : storeStrategy
+          ? [[(storeStrategy.locale || activeLocale) as LocaleCode, storeStrategy] as [LocaleCode, StrategyBrief]]
+          : [];
+
+    if (!profile || strategiesToGenerate.length === 0) return;
 
     const variantsPerSlide = Math.min(3, Math.max(1, options?.variantsPerSlide ?? 1));
     const signal = beginGeneration();
@@ -429,99 +563,111 @@ export function useCampaignPipeline() {
     setStep("gallery");
 
     const slides: GeneratedSlide[] = [];
-    const backgroundSceneCache: Record<string, string> = {};
-    let lockedTypography: LockedTypography | undefined;
-    let styleReferenceDataUrl: string | undefined;
 
     try {
-      const totalCalls = storeStrategy.slides.length * variantsPerSlide;
+      const totalCalls =
+        strategiesToGenerate.reduce((sum, [, strategy]) => sum + strategy.slides.length, 0) *
+        variantsPerSlide;
       assertCanGenerate(totalCalls);
 
-      for (const slide of storeStrategy.slides) {
-        if (signal.aborted) break;
+      for (const [locale, localeStrategy] of strategiesToGenerate) {
+        const backgroundSceneCache: Record<string, string> = {};
+        let lockedTypography: LockedTypography | undefined;
+        let styleReferenceDataUrl: string | undefined;
 
-        setPartialPreviewUrl("");
-        setProgressLabel(`Generating slide ${slide.slideNumber} of ${storeStrategy.slides.length}...`);
-
-        const variantResults: GeneratedSlideVariant[] = [];
-        let lastGenerationResult: Awaited<ReturnType<typeof generateSingleStoreSlide>> | null = null;
-
-        for (let variantIndex = 0; variantIndex < variantsPerSlide; variantIndex += 1) {
+        for (const slide of localeStrategy.slides) {
           if (signal.aborted) break;
 
-          const slideLockedTypography =
-            lockedTypography ?? resolveLockedTypographyForSlide(storeStrategy, slide);
-
-          const result = await generateSingleStoreSlide(
-            slide,
-            storeStrategy,
-            signal,
-            backgroundSceneCache,
-            slideLockedTypography,
-            styleReferenceDataUrl,
-            (message) =>
-              setProgressLabel(
-                variantsPerSlide > 1
-                  ? `Slide ${slide.slideNumber} v${variantIndex + 1}: ${message}`
-                  : `Slide ${slide.slideNumber}: ${message}`,
-              ),
-            (dataUrl) => setPartialPreviewUrl(dataUrl),
+          setPartialPreviewUrl("");
+          setProgressLabel(
+            `[${locale.toUpperCase()}] Generating slide ${slide.slideNumber} of ${localeStrategy.slides.length}...`,
           );
-          lastGenerationResult = result;
 
-          const imageSource = result.dataUrl || result.imageUrl;
-          if (!imageSource) {
-            throw new Error(`Slide ${slide.slideNumber} variant ${variantIndex + 1} returned no image.`);
-          }
+          const variantResults: GeneratedSlideVariant[] = [];
+          let lastGenerationResult: Awaited<ReturnType<typeof generateSingleStoreSlide>> | null = null;
 
-          const resolved = await resolveDataUrl(imageSource);
+          for (let variantIndex = 0; variantIndex < variantsPerSlide; variantIndex += 1) {
+            if (signal.aborted) break;
 
-          if (
-            slide.backgroundSceneId &&
-            typeof result.backgroundDataUrl === "string" &&
-            !backgroundSceneCache[slide.backgroundSceneId]
-          ) {
-            const rawBackground = result.backgroundDataUrl.split(",")[1];
-            if (rawBackground) {
-              backgroundSceneCache[slide.backgroundSceneId] = rawBackground;
+            const slideLockedTypography =
+              lockedTypography ?? resolveLockedTypographyForSlide(localeStrategy, slide);
+
+            const result = await generateSingleStoreSlide(
+              slide,
+              localeStrategy,
+              signal,
+              backgroundSceneCache,
+              slideLockedTypography,
+              styleReferenceDataUrl,
+              (message) =>
+                setProgressLabel(
+                  variantsPerSlide > 1
+                    ? `[${locale}] Slide ${slide.slideNumber} v${variantIndex + 1}: ${message}`
+                    : `[${locale}] Slide ${slide.slideNumber}: ${message}`,
+                ),
+              (dataUrl) => setPartialPreviewUrl(dataUrl),
+              undefined,
+              locale,
+            );
+            lastGenerationResult = result;
+
+            const imageSource = result.dataUrl || result.imageUrl;
+            if (!imageSource) {
+              throw new Error(`Slide ${slide.slideNumber} variant ${variantIndex + 1} returned no image.`);
             }
-          }
 
-          if (slide.slideNumber === (storeStrategy.styleAnchorSlide || 1)) {
-            if (result.lockedTypography) {
-              lockedTypography = result.lockedTypography;
+            const resolved = await resolveDataUrl(imageSource);
+
+            if (
+              slide.backgroundSceneId &&
+              typeof result.backgroundDataUrl === "string" &&
+              !backgroundSceneCache[slide.backgroundSceneId]
+            ) {
+              const rawBackground = result.backgroundDataUrl.split(",")[1];
+              if (rawBackground) {
+                backgroundSceneCache[slide.backgroundSceneId] = rawBackground;
+              }
             }
-            styleReferenceDataUrl = resolved;
+
+            if (slide.slideNumber === (localeStrategy.styleAnchorSlide || 1)) {
+              if (result.lockedTypography) {
+                lockedTypography = result.lockedTypography;
+              }
+              styleReferenceDataUrl = resolved;
+            }
+
+            variantResults.push({
+              id: `v${variantIndex + 1}`,
+              dataUrl: resolved,
+              prompt: String(result.revisedPrompt || result.prompt || ""),
+            });
+            bumpUsage(1);
           }
 
-          variantResults.push({
-            id: `v${variantIndex + 1}`,
-            dataUrl: resolved,
-            prompt: String(result.revisedPrompt || result.prompt || ""),
+          const selected = variantResults[0];
+          const backgroundDataUrl =
+            typeof lastGenerationResult?.backgroundDataUrl === "string"
+              ? lastGenerationResult.backgroundDataUrl
+              : undefined;
+          slides.push({
+            slideNumber: slide.slideNumber,
+            role: slide.role,
+            asoBeat: slide.asoBeat,
+            locale,
+            headline: slide.headline,
+            subheadline: slide.subheadline,
+            dataUrl: selected.dataUrl,
+            prompt: selected.prompt,
+            sourceDataUrl: selected.dataUrl,
+            backgroundDataUrl,
+            mockupPose: slide.mockupPose,
+            mockupAssetId: slide.mockupAssetId,
+            variants: variantResults.length > 1 ? variantResults : undefined,
+            selectedVariantId: selected.id,
           });
-          bumpUsage(1);
+          setPartialPreviewUrl("");
+          setGeneratedSlides([...slides]);
         }
-
-        const selected = variantResults[0];
-        const backgroundDataUrl =
-          typeof lastGenerationResult?.backgroundDataUrl === "string"
-            ? lastGenerationResult.backgroundDataUrl
-            : undefined;
-        slides.push({
-          slideNumber: slide.slideNumber,
-          role: slide.role,
-          asoBeat: slide.asoBeat,
-          headline: slide.headline,
-          subheadline: slide.subheadline,
-          dataUrl: selected.dataUrl,
-          prompt: selected.prompt,
-          backgroundDataUrl,
-          mockupPose: slide.mockupPose,
-          variants: variantResults.length > 1 ? variantResults : undefined,
-          selectedVariantId: selected.id,
-        });
-        setPartialPreviewUrl("");
-        setGeneratedSlides([...slides]);
       }
 
       if (!signal.aborted) {
@@ -530,11 +676,10 @@ export function useCampaignPipeline() {
     } catch (error) {
       if (!isCancelledError(error)) {
         const partial = slides.length;
-        const total = storeStrategy.slides.length;
         const base = error instanceof Error ? error.message : "Store set generation failed.";
         setErrorMessage(
-          partial > 0 && partial < total
-            ? `${base} (${partial} of ${total} slides were saved — retry generation for the rest.)`
+          partial > 0
+            ? `${base} (${partial} slides were saved — retry generation for the rest.)`
             : base,
         );
       }
@@ -551,7 +696,10 @@ export function useCampaignPipeline() {
   ) => {
     if (!profile || !storeStrategy) return;
 
-    const slide = storeStrategy.slides.find((s) => s.slideNumber === slideNumber);
+    const slideLocale =
+      generatedSlides.find((item) => item.slideNumber === slideNumber)?.locale ?? activeLocale;
+    const localeStrategy = storeStrategiesByLocale[slideLocale] ?? storeStrategy;
+    const slide = localeStrategy.slides.find((s) => s.slideNumber === slideNumber);
     if (!slide) return;
 
     const existingSlide = generatedSlides.find((s) => s.slideNumber === slideNumber);
@@ -583,7 +731,9 @@ export function useCampaignPipeline() {
       assertCanGenerate(1);
       const backgroundSceneCache: Record<string, string> = {};
       const existingAnchor = generatedSlides.find(
-        (s) => s.slideNumber === (storeStrategy.styleAnchorSlide || 1),
+        (s) =>
+          s.slideNumber === (localeStrategy.styleAnchorSlide || 1) &&
+          (s.locale ?? activeLocale) === slideLocale,
       );
 
       const modeLabel =
@@ -595,10 +745,10 @@ export function useCampaignPipeline() {
 
       const result = await generateSingleStoreSlide(
         slide,
-        storeStrategy,
+        localeStrategy,
         signal,
         backgroundSceneCache,
-        resolveLockedTypographyForSlide(storeStrategy, slide),
+        resolveLockedTypographyForSlide(localeStrategy, slide),
         existingAnchor?.dataUrl,
         (message) => setProgressLabel(`Regenerating ${modeLabel} (slide ${slideNumber}): ${message}`),
         (dataUrl, stage) => applySlidePreview(dataUrl, stage),
@@ -614,7 +764,12 @@ export function useCampaignPipeline() {
             mode === "composite"
               ? options?.mockupPose ?? existingSlide?.mockupPose
               : undefined,
+          mockupAssetId:
+            mode === "composite"
+              ? options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId
+              : slide.mockupAssetId,
         },
+        slideLocale,
       );
 
       const imageSource = result.dataUrl || result.imageUrl;
@@ -634,6 +789,10 @@ export function useCampaignPipeline() {
         mode === "composite"
           ? options?.mockupPose ?? existingSlide?.mockupPose ?? slide.mockupPose
           : slide.mockupPose ?? existingSlide?.mockupPose;
+      const mockupAssetId =
+        mode === "composite"
+          ? options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId
+          : slide.mockupAssetId ?? existingSlide?.mockupAssetId;
 
       setGeneratedSlides((prev) =>
         prev.map((item) =>
@@ -645,6 +804,9 @@ export function useCampaignPipeline() {
                 backgroundDataUrl,
                 mockupColor,
                 mockupPose,
+                mockupAssetId,
+                sourceDataUrl: mode !== "background" ? resolved : item.sourceDataUrl,
+                editorState: undefined,
                 renderVersion: Date.now(),
               }
             : item,
@@ -680,6 +842,55 @@ export function useCampaignPipeline() {
         };
       }),
     );
+  };
+
+  const updateGeneratedSlideFromEditor = (
+    slideNumber: number,
+    update: {
+      dataUrl: string;
+      editorState: SlideEditorState;
+      headline: string;
+      subheadline: string;
+    },
+  ) => {
+      setGeneratedSlides((prev) =>
+        prev.map((slide) =>
+          slide.slideNumber === slideNumber
+            ? {
+                ...slide,
+                dataUrl: update.dataUrl,
+                sourceDataUrl: slide.sourceDataUrl ?? slide.dataUrl,
+                editorState: update.editorState,
+                headline: update.headline,
+                subheadline: update.subheadline,
+                renderVersion: Date.now(),
+              }
+            : slide,
+        ),
+      );
+      setProgressLabel(`Slide ${slideNumber} updated from live editor.`);
+  };
+
+  const revertGeneratedSlideToOriginal = (slideNumber: number) => {
+    const localeStrategy = storeStrategy;
+    const plan = localeStrategy?.slides.find((s) => s.slideNumber === slideNumber);
+    setGeneratedSlides((prev) =>
+      prev.map((slide) => {
+        if (slide.slideNumber !== slideNumber) return slide;
+        if (!slide.sourceDataUrl) {
+          return { ...slide, editorState: undefined, renderVersion: Date.now() };
+        }
+        return {
+          ...slide,
+          dataUrl: slide.sourceDataUrl,
+          editorState: undefined,
+          headline: plan?.headline ?? slide.headline,
+          subheadline: plan?.subheadline ?? slide.subheadline,
+          renderVersion: Date.now(),
+        };
+      }),
+    );
+    setProgressLabel(`Slide ${slideNumber} reverted to original.`);
   };
 
   const generateSocialPack = async () => {
@@ -1005,12 +1216,17 @@ export function useCampaignPipeline() {
     setStep("setup");
     setProfile(null);
     setScreenshots([]);
+    setScreenshotsByLocale({});
     setStoreStrategy(null);
+    setStoreStrategiesByLocale({});
+    setActiveLocale("en");
     setAiStoreStrategy(null);
     setSocialStrategy(null);
     setAiSocialStrategy(null);
     setAutopilotStrategy(null);
     setAiAutopilotStrategy(null);
+    setCoherenceAudit(null);
+    setLocaleMismatchCount(0);
     setAutopilotCampaignId(null);
     setPostIdsByDay({});
     setGeneratedSlides([]);
@@ -1043,12 +1259,34 @@ export function useCampaignPipeline() {
     }
   };
 
+  const switchActiveLocale = (locale: LocaleCode) => {
+    setActiveLocale(locale);
+    const next = storeStrategiesByLocale[locale];
+    if (next) {
+      setStoreStrategy(next);
+    }
+    const localeShots = getScreenshotsForLocale(screenshotsByLocale, locale, screenshots);
+    if (localeShots.length) {
+      setScreenshots(localeShots);
+    }
+  };
+
+  const updateStoreStrategy = (strategy: StrategyBrief) => {
+    setStoreStrategy(strategy);
+    if (strategy.locale) {
+      setStoreStrategiesByLocale((current) => ({ ...current, [strategy.locale!]: strategy }));
+    }
+  };
+
   return {
     step,
     campaignType,
     profile,
     screenshots,
+    screenshotsByLocale,
     storeStrategy,
+    storeStrategiesByLocale,
+    activeLocale,
     socialStrategy,
     autopilotStrategy,
     screenshotPreviews,
@@ -1062,6 +1300,10 @@ export function useCampaignPipeline() {
     progressLabel,
     partialPreviewUrl,
     regeneratingSlideNumber,
+    coherenceAudit,
+    isAuditing,
+    localeMismatchCount,
+    refreshCoherenceAudit,
     usageRefreshKey,
     createStrategy,
     generateCampaign,
@@ -1070,11 +1312,14 @@ export function useCampaignPipeline() {
     goBackToSetup,
     goToStrategy,
     goToGallery,
-    setStoreStrategy,
+    setStoreStrategy: updateStoreStrategy,
+    switchActiveLocale,
     setSocialStrategy,
     setAutopilotStrategy,
     resetStrategyToAi,
     regenerateStoreSlide,
     selectSlideVariant,
+    updateGeneratedSlideFromEditor,
+    revertGeneratedSlideToOriginal,
   };
 }

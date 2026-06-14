@@ -26,9 +26,9 @@ export const storeSlideBeatMeta: Record<
     label: "Hook",
     slideNumber: 1,
     role: "hero",
-    conversionGoal: "Stop the scroll — communicate the #1 outcome in under 5 words.",
+    conversionGoal: "Stop the scroll — #1 outcome in 3–6 words. ~89% of users never scroll past the first frames.",
     copyGuidance:
-      "Lead with a benefit or transformation, not the app name alone. App name belongs in subheadline if needed.",
+      "Name the pain or desire (question format OK). NO download/start/CTA verbs. Do NOT use the same VERB+DESCRIPTOR template as other slides.",
     visualVariantHint:
       "Editorial lifestyle photo — person at a focused desk, shallow depth of field, teal rim light, dark premium mood. Highest energy.",
     defaultScreenshotUsage: "hero_mockup",
@@ -37,9 +37,9 @@ export const storeSlideBeatMeta: Record<
     label: "Problem → Outcome",
     slideNumber: 2,
     role: "feature",
-    conversionGoal: "Make the user feel the pain, then show the relief your app delivers.",
+    conversionGoal: "Problem-first storyboard: name the pain, then the relief. Front-load value in slides 1–3.",
     copyGuidance:
-      "Headline = pain or desire. Subheadline = how the app solves it. Do not repeat slide 1 wording.",
+      "Headline = pain or desire (3–6 words). Subheadline = how the app solves it. Must connect to slide 1 hook — do not repeat slide 1 headline.",
     visualVariantHint:
       "Relatable lifestyle scene — evening workspace or calm study nook, warm side light, human context, no devices visible.",
     defaultScreenshotUsage: "feature_mockup",
@@ -59,9 +59,9 @@ export const storeSlideBeatMeta: Record<
     label: "Depth / Proof",
     slideNumber: 4,
     role: "feature",
-    conversionGoal: "Build trust — secondary benefit, use-case depth, or outcome reinforcement.",
+    conversionGoal: "Build trust — social proof beat. Set showSocialProof true when proof assets exist.",
     copyGuidance:
-      "Headline = another distinct benefit or 'who it's for'. Avoid repeating slides 1–3. No fake ratings.",
+      "Headline = trust/outcome benefit (3–6 words). Distinct keyword theme. Avoid fake ratings in copy — proof renders separately.",
     visualVariantHint:
       "Calmer confidence scene — morning routine, organized workspace, soft natural light, same brand world as prior slides.",
     defaultScreenshotUsage: "feature_mockup",
@@ -72,7 +72,7 @@ export const storeSlideBeatMeta: Record<
     role: "cta",
     conversionGoal: "Remove friction — clear download action with urgency and brand recall.",
     copyGuidance:
-      "Headline = action ('Start Free', 'Download Now'). Subheadline = low-friction promise. No feature lists.",
+      "Headline = action ('Start Free', 'Download Now'). Subheadline = recap top 3 benefits from slides 1–4 + low-friction promise. Reference primaryMessage.",
     visualVariantHint:
       "Brand-forward CTA plate — strong gradient from design system, minimal scene, maximum copy clarity.",
     defaultScreenshotUsage: "none",
@@ -96,23 +96,48 @@ export function buildAsoStrategyPromptBlock(profile: AppProfile, screenshotCount
     .map((beat) => `${storeSlideBeatMeta[beat].slideNumber}=${beat}`)
     .join(", ");
 
+  const keywordLine = profile.keywords
+    ? `App Store keywords to distribute (one theme per slide, embed in headline): ${profile.keywords}`
+    : "Infer high-intent App Store keyword themes from the app category and screenshots.";
+  const metadataLine = [
+    profile.appTitle ? `Listing title: ${profile.appTitle}` : "",
+    profile.appSubtitle ? `Subtitle: ${profile.appSubtitle}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
   return [
-    "Create ASO 5-slide App Store set: one conversion story (Hook→Problem→Feature→Proof→Download), not 5 clones or 5 unrelated ads.",
+    "Create ASO 5-slide App Store set using ButterKit storyboard principles: problem-first narrative, one focus per slide, front-load the 3 strongest benefits (most users never scroll past slide 3).",
     "",
     formatCategoryPresetForPrompt(profile),
     "",
     `App: ${profile.appName} | ${profile.category}`,
     `Description: ${profile.description}`,
     `Audience: ${profile.targetAudience || "Mobile app users"}`,
+    metadataLine,
+    keywordLine,
     `Screenshots: ${screenshotCount} (index 0-based; use each once when possible; slide 5 usually no screenshot)`,
     "",
-    `Beats: ${beatSummary}. Each slide: unique headline, shared designSystem, deliberate background plan.`,
+    `Beats: ${beatSummary}. Each slide: unique native headline, shared designSystem, deliberate background plan.`,
+    "",
+    "CAPTION RULES (OCR-indexed by Apple — critical):",
+    "- ONE dominant caption per slide: 3–6 words (max 8). Lead with verb or number.",
+    "- Ban marketing adverbs: easily, smoothly, simply, magically.",
+    "- Assign keywordTheme per slide — embed that phrase in the headline verbatim.",
+    "- Hook slide: omit heavy subheadline; other slides may use a short supporting subheadline.",
+    "- Do NOT use the same VERB+DESCRIPTOR headline pattern on every slide — vary structure (question, outcome, action).",
+    "",
+    "NARRATIVE THREAD (mandatory):",
+    "- Slide 1 hook: pain or desire ONLY — never 'Start', 'Download', 'Get started', or CTA language.",
+    "- Slide 2 problem_outcome: names the pain from slide 1 and introduces relief — must feel like the next sentence in the story.",
+    "- Slide 5 download_cta: summarizes benefits from slides 1–4 + clear install urgency aligned with primaryMessage.",
     "",
     "JSON keys: positioning, primaryMessage, targetAudience, narrativeArc, designSystem, visualTheme, accentColor, brandColor, setMode (lifestyle | solid | hybrid), styleAnchorSlide, screenshotAssessments[], backgroundScenes[], slides[5].",
     "screenshotAssessments[]: per uploaded image index — rating (great | usable | retake), issues[], retakeGuidance, description.",
     "backgroundScenes[] (4–5 unique scenes for slides 1–5): id, label, treatment, sceneDescription, reuseRationale, sharedBySlides[].",
-    "Each slide: slideNumber, role, asoBeat, conversionGoal, headline, headlineVerb (ACTION VERB uppercase), headlineDescriptor (benefit words uppercase), subheadline, screenshotIndex, screenshotUsage, screenshotRationale, screenshotRating, screenshotIssues[], retakeGuidance, visualStyle, visualVariant, backgroundSceneId, backgroundTreatment, layoutStyle, headlineAccent, featureHighlights[], showAppBranding, backgroundRationale, mockupPose { orientation: upright|tilt_left|tilt_right, scale: compact|standard|hero, placement: center|left|right }, breakoutPanelDescription (optional).",
-    "mockupPose: Slides 1–4 MUST use tilt_left or tilt_right (3D showcase, never upright). Slide 1 = tilt_right + hero + placement right (SWAY hero). Vary tilt/placement on 2–4; opposite side of frame stays open for lifestyle/bokeh.",
+    "sceneDescription MUST place people/focal subjects on the OPPOSITE side from mockupPose placement (person left when device right).",
+    "Each slide: slideNumber, role, asoBeat, conversionGoal, headline, headlineVerb, headlineDescriptor, subheadline, keywordTheme, screenshotIndex, screenshotUsage, screenshotRationale, screenshotRating, screenshotIssues[], retakeGuidance, visualStyle, visualVariant, backgroundSceneId, backgroundTreatment, layoutStyle, headlineAccent, featureHighlights[], showSocialProof, showAppBranding, backgroundRationale, mockupPose { orientation: upright|tilt_left|tilt_right, scale: compact|standard|hero, placement: auto|center|left|right }, breakoutPanelDescription (optional).",
+    "mockupPose: Slides 1–4 MUST use tilt_left or tilt_right. Use placement auto (subject-aware) or explicit left/right. Slide 1 = tilt_right + hero + auto/right.",
     "setMode: DEFAULT lifestyle (AI cinematic backgrounds). Use solid ONLY if user needs flat brand-color slides. Use hybrid ONLY if user wants 1 AI hero + solid rest.",
     "setMode solid: brandColor hex for ALL slides (programmatic fill). setMode lifestyle: 4–5 AI scenes. setMode hybrid: slide styleAnchorSlide gets AI hero; other slides use brandColor solid fill.",
     "",
@@ -120,14 +145,14 @@ export function buildAsoStrategyPromptBlock(profile: AppProfile, screenshotCount
     "- setMode MUST be lifestyle unless there is a strong reason for solid/hybrid.",
     "- Prefer a UNIQUE background scene per slide (5 scenes). Share a scene on at most 2 adjacent slides only when the same photoshoot is essential.",
     "- sceneDescription must describe a rich cinematic environment with depth — NEVER plain gray, white void, or empty gradient.",
-    "- lifestyle_with_person: include one person (side/over-shoulder) — best for emotional connection slides.",
+    "- lifestyle_with_person: include one person (side/over-shoulder) — best for hook and emotional slides.",
     "- lifestyle_environment: NO people — desk, nature, interior atmosphere.",
-    "- abstract_brand: neon arcs, particles, dark premium tech mood — ideal for slide 1 hero ONLY.",
+    "- abstract_brand: reserved for CTA slide or hybrid accent ONLY — never default for hook.",
     "- download_cta slide: choose backgroundTreatment deliberately (cta_brand, abstract_brand, or reuse an earlier scene). Assign backgroundSceneId — may share slide 1 brand world or use a unique CTA scene.",
     "- Reuse backgrounds when slides tell one story (e.g. slides 2–3 same photoshoot). Use a NEW scene when mood must shift (e.g. slide 4 calmer proof).",
     "- backgroundRationale: one sentence explaining WHY you chose this treatment and reuse plan.",
     "- headlineAccent: pick 1–3 words from headline for gradient highlight.",
-    "- featureHighlights: hook slide only — 2–3 short value props (1–2 words each, e.g. App Blocking, AI Coach, Focus Timer).",
+    "- featureHighlights: hook slide ONLY — 2–3 short value props in the strategy locale language (1–2 words each).",
     "Match screens to messages from uploaded images.",
   ].join("\n");
 }
@@ -145,10 +170,11 @@ export function buildFallbackStoreStrategy(profile: AppProfile, screenshotCount:
   }> = [
     {
       beat: "hook",
-      headline: shortDesc.length > 42 ? `${profile.appName} — focus, simplified` : shortDesc.split(".")[0] || profile.appName,
-      subheadline: `The ${profile.category.toLowerCase()} app built for ${audience.toLowerCase()}.`,
+      headline: "Distracted all day?",
+      subheadline: `${profile.appName} helps ${audience.toLowerCase()} reclaim focus.`,
       screenshotRationale: "Home or hero screen — instantly communicates what the app is.",
-      visualVariant: "Dark cinematic space with glowing teal and blue neon arcs, soft particles, premium tech hero mood.",
+      visualVariant:
+        "Editorial lifestyle photo — person at a focused desk, shallow depth of field, warm side light, premium commercial mood.",
     },
     {
       beat: "problem_outcome",
@@ -159,22 +185,22 @@ export function buildFallbackStoreStrategy(profile: AppProfile, screenshotCount:
     },
     {
       beat: "feature_benefit",
-      headline: "Your edge, built in",
-      subheadline: "A standout capability that saves time from the first session.",
+      headline: "Track what matters",
+      subheadline: "See patterns and progress from your first week.",
       screenshotRationale: "Feature screen that maps to a specific user benefit.",
-      visualVariant: "Deep-work environment matching the feature — desk with soft teal glow or serene nature backdrop.",
+      visualVariant: "Deep-work environment — desk with soft natural light or serene nature backdrop.",
     },
     {
       beat: "social_proof",
-      headline: `Made for ${audience.split(" ")[0] || "you"}`,
+      headline: `Built for ${audience.split(" ")[0] || "you"}`,
       subheadline: "Designed for real routines — quick to start, easy to stick with.",
       screenshotRationale: "Secondary screen showing depth, stats, or personalization.",
       visualVariant: "Calm morning routine scene — organized desk, soft natural light, confidence-building mood.",
     },
     {
       beat: "download_cta",
-      headline: "Download free",
-      subheadline: `Start with ${profile.appName} today — no setup friction.`,
+      headline: "Start focusing free",
+      subheadline: `Join ${audience.toLowerCase()} using ${profile.appName} — download today.`,
       screenshotRationale: "CTA slide — typography and brand colors drive the install action.",
       visualVariant: "Bold brand gradient CTA plate with minimal environmental detail.",
     },
@@ -205,10 +231,10 @@ export function buildFallbackStoreStrategy(profile: AppProfile, screenshotCount:
       positioning: `${profile.appName} helps ${audience} achieve outcomes faster through ${shortDesc || profile.category.toLowerCase()}.`,
       primaryMessage: shortDesc || `${profile.appName} delivers a premium mobile experience for ${audience}.`,
       targetAudience: audience,
-      narrativeArc: `From first-impression hook to download CTA — why ${profile.appName} wins for ${audience}.`,
+      narrativeArc: `Pain (slide 1) → relief (slide 2) → proof (slides 3–4) → download (slide 5) — why ${profile.appName} wins for ${audience}.`,
       designSystem:
-        "Dark navy base, teal accent glow, bold white headlines, large centered phone mockup, consistent top text block — same brand world on slides 1–4.",
-      visualTheme: "Premium App Store lifestyle photography — cinematic lighting, shallow DOF, cohesive dark mood with teal accents.",
+        "Dark premium base, teal accent, bold white headlines, lifestyle photography on slides 1–4 — cohesive brand world.",
+      visualTheme: "Premium App Store lifestyle photography — cinematic lighting, shallow DOF, real environments, not neon abstract.",
       accentColor: "#2dd4bf",
       brandColor: "#2dd4bf",
       setMode: "lifestyle",
@@ -286,11 +312,6 @@ export function assignUniqueScreenshots(
   });
 }
 
-export function normalizeStoreSlideBeat(value: unknown, slideNumber: number): StoreSlideBeat {
-  const expected = getBeatForSlide(slideNumber);
-  const beats: StoreSlideBeat[] = beatOrder;
-  if (typeof value === "string" && beats.includes(value as StoreSlideBeat)) {
-    return value as StoreSlideBeat;
-  }
-  return expected;
+export function normalizeStoreSlideBeat(_value: unknown, slideNumber: number): StoreSlideBeat {
+  return getBeatForSlide(slideNumber);
 }

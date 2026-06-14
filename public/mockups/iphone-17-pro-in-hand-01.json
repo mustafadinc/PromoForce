@@ -1,0 +1,55 @@
+{
+  "slug": "iphone-17-pro-in-hand-01",
+  "kind": "scene",
+  "label": "iphone 17 pro in hand 01",
+  "src": "/mockups/iphone-17-pro-in-hand-01.png",
+  "fsPath": [
+    "public",
+    "mockups",
+    "iphone-17-pro-in-hand-01.png"
+  ],
+  "width": 1280,
+  "height": 2784,
+  "sourcePsd": "C:/Users/Alperen/Downloads/Freebie iPhone 17 Pro in Hand - 02 Mockups Scenes - PSD & FIG/Adobe Photoshop (PSD)/01.psd",
+  "designLayer": "01 - REPLACE THIS SCREEN",
+  "screenQuad": {
+    "tl": {
+      "x": 221.25131282820712,
+      "y": 321.6324081020255
+    },
+    "tr": {
+      "x": 1058.7486871717933,
+      "y": 321.6324081020255
+    },
+    "br": {
+      "x": 1058.7486871717933,
+      "y": 2138.6466616654166
+    },
+    "bl": {
+      "x": 221.25131282820712,
+      "y": 2138.6466616654166
+    }
+  },
+  "screenQuadNorm": {
+    "tl": {
+      "x": 0.1728525881470368,
+      "y": 0.11552888222055514
+    },
+    "tr": {
+      "x": 0.8271474118529636,
+      "y": 0.11552888222055514
+    },
+    "br": {
+      "x": 0.8271474118529636,
+      "y": 0.768192048012003
+    },
+    "bl": {
+      "x": 0.1728525881470368,
+      "y": 0.768192048012003
+    }
+  },
+  "nativeSize": {
+    "width": 4000,
+    "height": 2666
+  }
+}

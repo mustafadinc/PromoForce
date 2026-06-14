@@ -1,5 +1,6 @@
 import { normalizeMockupPose } from "@/lib/mockupPose";
-import { splitHeadlineParts } from "@/lib/asoTypography";
+import { normalizeCaptionForSlide } from "@/lib/normalizeAsoCaption";
+import type { LocaleCode } from "@/lib/locales";
 import type {
   AppProfile,
   BackgroundScene,
@@ -27,11 +28,11 @@ function getBeatForSlide(slideNumber: number): StoreSlideBeat {
 }
 
 const beatRationaleFallback: Record<StoreSlideBeat, string> = {
-  hook: "Slide 1 needs scroll-stopping abstract brand energy — no person.",
+  hook: "Editorial lifestyle hero — person at a focused desk or calm environment, scroll-stopping but real.",
   problem_outcome: "Emotional connection via a relatable person in focus context.",
   feature_benefit: "Same photoshoot as slide 2 keeps the story cohesive.",
   social_proof: "Calmer environment-only scene signals trust without repeating the person shot.",
-  download_cta: "Bold AI brand atmosphere for the download moment — Creative Director chooses treatment and reuse.",
+  download_cta: "Bold brand atmosphere for the download moment — minimal scene, maximum copy clarity.",
 };
 
 const beatDefaults: Record<
@@ -42,7 +43,7 @@ const beatDefaults: Record<
     showAppBranding: boolean;
   }
 > = {
-  hook: { treatment: "abstract_brand", layoutStyle: "hero_branded", showAppBranding: true },
+  hook: { treatment: "lifestyle_with_person", layoutStyle: "hero_branded", showAppBranding: true },
   problem_outcome: { treatment: "lifestyle_with_person", layoutStyle: "lifestyle_focus", showAppBranding: true },
   feature_benefit: { treatment: "lifestyle_with_person", layoutStyle: "lifestyle_focus", showAppBranding: false },
   social_proof: { treatment: "lifestyle_environment", layoutStyle: "lifestyle_focus", showAppBranding: false },
@@ -109,19 +110,23 @@ export function buildSolidBackgroundScene(profile: AppProfile, brandColor: strin
   ];
 }
 
-export function normalizeHeadlineFields(slide: Partial<StoreSlidePlan>): {
+export function normalizeHeadlineFields(
+  slide: Partial<StoreSlidePlan>,
+  locale?: LocaleCode,
+): {
   headline: string;
   headlineVerb: string;
   headlineDescriptor: string;
 } {
-  const headline = String(slide.headline || "").trim();
-  const parts = splitHeadlineParts(headline, slide.headlineVerb, slide.headlineDescriptor);
-  const fullHeadline = parts.descriptor ? `${parts.verb} ${parts.descriptor}` : parts.verb;
-  return {
-    headline: fullHeadline,
-    headlineVerb: parts.verb,
-    headlineDescriptor: parts.descriptor,
-  };
+  return normalizeCaptionForSlide({
+    headline: String(slide.headline || ""),
+    headlineVerb: slide.headlineVerb,
+    headlineDescriptor: slide.headlineDescriptor,
+    subheadline: slide.subheadline,
+    keywordTheme: slide.keywordTheme,
+    asoBeat: slide.asoBeat,
+    locale,
+  });
 }
 
 export function buildFallbackBackgroundScenes(profile: AppProfile): BackgroundScene[] {
@@ -139,7 +144,7 @@ export function buildFallbackBackgroundScenes(profile: AppProfile): BackgroundSc
       label: "Deep work lifestyle",
       treatment: "lifestyle_with_person",
       sceneDescription:
-        "Young professional at a calm desk with laptop, warm side light, shallow depth of field, focused mood — person visible from side or over-shoulder, no phone in hands. Moody navy room with teal rim light.",
+        "Young professional at a calm desk with laptop, warm side light, shallow depth of field, focused mood — person visible from side or over-shoulder on the LEFT third of frame, no phone in hands. Moody navy room with teal rim light. Center-right stays open for device overlay.",
       reuseRationale: "Slide 2 — emotional problem/outcome beat with its own photoshoot.",
       sharedBySlides: [2],
     },

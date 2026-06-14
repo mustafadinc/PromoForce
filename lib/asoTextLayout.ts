@@ -1,4 +1,5 @@
 import type { LockedTypography } from "@/lib/campaignTypes";
+import type { LocaleCode } from "@/lib/locales";
 import {
   APP_STORE_GENERATION_HEIGHT,
   APP_STORE_GENERATION_WIDTH,
@@ -12,12 +13,13 @@ import {
   fitFontSize,
   splitHeadlineParts,
   wrapTextToMaxWidth,
+  estimateTextWidth,
 } from "@/lib/asoTypography";
 
 /** Bottom edge of logo row (reference px @ 1280w). */
 const BRANDING_ZONE_BOTTOM = 112;
 const HEADLINE_GAP_BELOW_BRAND = 36;
-const HEADLINE_TOP_BASELINE = 156;
+const HEADLINE_TOP_BASELINE = 172;
 const CAP_HEIGHT_RATIO = 0.82;
 const SUB_SIZE_DESCRIPTOR_RATIO = 0.56;
 
@@ -119,14 +121,15 @@ export function computeAsoTextLayout(
   isCta: boolean,
   lockedTypography?: LockedTypography,
   reserveTopForBranding = false,
+  locale?: LocaleCode,
 ): AsoTextLayout {
   const profile = getCompositeLayoutProfile(width, height);
   const scale = layoutScale(width, height, profile);
   const safeWidth = width * profile.textSafeWidthRatio;
   const textAnchorX =
-    profile.textAlign === "left" ? Math.round(width * 0.06) : Math.round(width / 2);
+    profile.textAlign === "left" ? Math.round(width * 0.08) : Math.round(width / 2);
   const textAnchor = profile.textAlign === "left" ? "start" : "middle";
-  const { verb, descriptor } = splitHeadlineParts(headline, headlineVerb, headlineDescriptor);
+  const { verb, descriptor } = splitHeadlineParts(headline, headlineVerb, headlineDescriptor, locale);
 
   let verbSize: number;
   let descriptorSize: number;
@@ -143,14 +146,15 @@ export function computeAsoTextLayout(
     const verbMin = Math.round(
       (isCta ? profile.verbSizeMinCta : profile.verbSizeMin) * scale,
     );
-    verbSize = Math.round(fitFontSize(verb, safeWidth, verbMax, verbMin));
+    verbSize = Math.round(fitFontSize(verb, safeWidth, verbMax, verbMin, locale));
     descriptorSize = Math.round(profile.descriptorSize * scale);
-    if (descriptor && descriptor.length * descriptorSize * 0.64 > safeWidth) {
+    if (descriptor && estimateTextWidth(descriptor, descriptorSize, locale) > safeWidth) {
       descriptorSize = fitFontSize(
         descriptor,
         safeWidth,
         descriptorSize,
         Math.round(profile.descriptorSize * 0.72 * scale),
+        locale,
       );
     }
     subSize = computeSubSize(descriptorSize, scale, isCta, profile);
@@ -162,11 +166,11 @@ export function computeAsoTextLayout(
 
   const verbLines = verb ? [verb] : [];
   const descriptorLines = descriptor
-    ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, isCta ? 3 : 2)
+    ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, isCta ? 3 : 2, locale)
     : [];
 
   const subLines = subheadline.trim()
-    ? wrapTextToMaxWidth(subheadline, safeWidth * 0.95, subSize, 2)
+    ? wrapTextToMaxWidth(subheadline, safeWidth * 0.95, subSize, 2, locale)
     : [];
 
   const textTopY = computeFirstLineBaseline(
@@ -219,6 +223,7 @@ export function computeLockedTypographyFromHeadline(
   width: number,
   height: number,
   isCta: boolean,
+  locale?: LocaleCode,
 ): LockedTypography {
   const layout = computeAsoTextLayout(
     headline,
@@ -228,6 +233,9 @@ export function computeLockedTypographyFromHeadline(
     width,
     height,
     isCta,
+    undefined,
+    false,
+    locale,
   );
   return {
     verbSize: layout.verbSize,

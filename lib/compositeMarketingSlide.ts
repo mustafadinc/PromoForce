@@ -1,10 +1,15 @@
 import sharp from "sharp";
 import type { LockedTypography, SlideLayoutStyle } from "@/lib/campaignTypes";
-import { getAsoFontFaceSvgDef } from "@/lib/asoFontEmbed";
+import { getAsoFontFaceSvgDef, getSvgFontFamily } from "@/lib/asoFontEmbed";
 import { computeAsoTextLayout, computeLockedTypographyFromHeadline, getBrandingMetrics } from "@/lib/asoTextLayout";
 import {
   ASO_SVG_FONT_FAMILY,
 } from "@/lib/asoTypography";
+import type { LocaleCode, SocialProofInput } from "@/lib/campaignTypes";
+import { analyzeBackgroundSubject } from "@/lib/backgroundSubjectAnalysis";
+import { resolveSubjectAwarePose } from "@/lib/resolveSubjectAwarePose";
+import { resolveMockupPlacement } from "@/lib/mockupPose";
+import { buildSocialProofSvg } from "@/lib/socialProofOverlay";
 import {
   parseImageSize,
 } from "@/lib/appStoreImageSizes";
@@ -42,14 +47,16 @@ import {
   ASSET_DEVICE_ASPECT,
   assetScreenQuad,
   computeAssetDevicePlacement,
+  getSceneMockupAsset,
   usesAssetMockup,
+  type MockupAssetId,
 } from "@/lib/assetMockup";
-import { renderAssetDeviceLayer } from "@/lib/renderAssetDevice";
+import { renderAssetDeviceLayer, renderSceneMockupLayer } from "@/lib/renderAssetDevice";
 
 export { parseImageSize };
 export type { LockedTypography };
 
-const MIN_TEXT_DEVICE_GAP = 48;
+const MIN_TEXT_DEVICE_GAP = 64;
 /** Minimum gap above feature pills / canvas bottom so the full device chin stays visible. */
 const BOTTOM_SAFE_MARGIN = 64;
 /** Extra clearance so the bottom bezel + rounded chin are never clipped by the canvas edge. */
@@ -98,7 +105,13 @@ type CompositeMarketingSlideInput = {
   lockedTypography?: LockedTypography;
   mockupColor?: string;
   mockupPose?: MockupPose;
+  mockupAssetId?: MockupAssetId;
   slideNumber?: number;
+  locale?: LocaleCode;
+  socialProof?: SocialProofInput;
+  showSocialProof?: boolean;
+  omitSubheadline?: boolean;
+  asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
 };
 
 type PhoneLayout = {
@@ -162,13 +175,15 @@ function getAssetPhoneLayout(
   reserveBottom: number,
   profile: CompositeLayoutProfile,
   mockupPose: MockupPose,
+  mockupAssetId?: MockupAssetId | null,
 ): PhoneLayout {
   const scale = layoutScale(width, height, profile);
   const sizeMult = mockupPoseScaleMultiplier(mockupPose);
+  const resolved = resolveLayoutMockupPose(mockupPose);
   const placement =
-    mockupPose.placement === "left"
+    resolved.placement === "left"
       ? "left"
-      : mockupPose.placement === "center"
+      : resolved.placement === "center"
         ? "center"
         : "right";
 
@@ -203,6 +218,7 @@ function getAssetPhoneLayout(
     topReserve,
     bottomMargin,
     edgeInset,
+    mockupAssetId,
   });
 
   const screenQuad = assetScreenQuad(
@@ -211,6 +227,7 @@ function getAssetPhoneLayout(
     placed.deviceH,
     placed.originX,
     placed.originY,
+    mockupAssetId,
   ) as unknown as PerspectiveQuad;
 
   return {
@@ -230,6 +247,11 @@ function getAssetPhoneLayout(
   };
 }
 
+function resolveLayoutMockupPose(pose: MockupPose): MockupPose {
+  const placement = resolveMockupPlacement(pose);
+  return { ...pose, placement };
+}
+
 function getPhoneLayout(
   width: number,
   height: number,
@@ -237,13 +259,15 @@ function getPhoneLayout(
   reserveBottom: number,
   profile: CompositeLayoutProfile,
   mockupPose: MockupPose,
+  mockupAssetId?: MockupAssetId | null,
 ): PhoneLayout {
-  if (usesAssetMockup(mockupPose.orientation)) {
-    return getAssetPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose);
+  const layoutPose = resolveLayoutMockupPose(mockupPose);
+  if (usesAssetMockup(layoutPose.orientation, mockupAssetId)) {
+    return getAssetPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, layoutPose, mockupAssetId);
   }
 
   const scale = layoutScale(width, height, profile);
-  const sizeMult = mockupPoseScaleMultiplier(mockupPose);
+  const sizeMult = mockupPoseScaleMultiplier(layoutPose);
 
   if (profile.format === "landscape") {
     const sideMargin = Math.round(28 * scale);
@@ -261,20 +285,20 @@ function getPhoneLayout(
 
     const frontW = phoneW;
     const frontH = phoneH;
-    const geo = buildPerspectivePhoneGeometry(mockupPose.orientation);
+    const geo = buildPerspectivePhoneGeometry(layoutPose.orientation);
     const sc = frontW / METALLIC_FRAME_W;
     const stackH = Math.ceil((geo.bounds.maxY - geo.bounds.minY) * sc);
     const stackW = Math.ceil((geo.bounds.maxX - geo.bounds.minX) * sc);
     const centerY = Math.round((height - stackH) / 2);
     const placement =
-      mockupPose.placement === "left"
+      layoutPose.placement === "left"
         ? "left"
-        : mockupPose.placement === "center"
+        : layoutPose.placement === "center"
           ? "center"
           : "right";
     let stackX: number;
     let stackY: number;
-    if (usesPerspectiveMockup(mockupPose.orientation)) {
+    if (usesPerspectiveMockup(layoutPose.orientation)) {
       const placed = computePerspectiveStackPlacement(geo, sc, width, placement, {
         bottomY: centerY + stackH,
         edgeInsetPx: sideMargin,
@@ -283,14 +307,14 @@ function getPhoneLayout(
       stackX = nudgePerspectiveStackX(geo, sc, placed.stackX, stackY, width, sideMargin);
     } else {
       stackX =
-        mockupPose.placement === "left"
+        layoutPose.placement === "left"
           ? sideMargin
-          : mockupPose.placement === "center"
+          : layoutPose.placement === "center"
             ? Math.round((width - frontW) / 2)
             : width - sideMargin - frontW;
       stackY = centerY;
     }
-    return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, mockupPose);
+    return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, layoutPose);
   }
 
   const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
@@ -314,8 +338,8 @@ function getPhoneLayout(
     phoneW = Math.min(phoneW, maxPhoneWFromHeight);
   }
 
-  if (usesPerspectiveMockup(mockupPose.orientation)) {
-    const capW = perspectiveFrontWidthCap(width, mockupPose);
+  if (usesPerspectiveMockup(layoutPose.orientation)) {
+    const capW = perspectiveFrontWidthCap(width, layoutPose);
     if (phoneW > capW) {
       phoneW = capW;
     }
@@ -329,12 +353,12 @@ function getPhoneLayout(
 
   const frontH = phoneH;
   const frontW = phoneW;
-  const geo = buildPerspectivePhoneGeometry(mockupPose.orientation);
+  const geo = buildPerspectivePhoneGeometry(layoutPose.orientation);
   const geoScale = frontW / METALLIC_FRAME_W;
-  const stackH = usesPerspectiveMockup(mockupPose.orientation)
+  const stackH = usesPerspectiveMockup(layoutPose.orientation)
     ? Math.ceil((geo.bounds.maxY - geo.bounds.minY) * geoScale)
     : frontH;
-  const stackW = usesPerspectiveMockup(mockupPose.orientation)
+  const stackW = usesPerspectiveMockup(layoutPose.orientation)
     ? Math.ceil((geo.bounds.maxX - geo.bounds.minX) * geoScale)
     : frontW;
   const frontY = Math.max(topBound, bottomBound - stackH);
@@ -342,8 +366,8 @@ function getPhoneLayout(
   const insetPx = Math.round(width * 0.055);
   let stackX: number;
   let stackY: number;
-  if (usesPerspectiveMockup(mockupPose.orientation)) {
-    const placed = computePerspectiveStackPlacement(geo, geoScale, width, mockupPose.placement, {
+  if (usesPerspectiveMockup(layoutPose.orientation)) {
+    const placed = computePerspectiveStackPlacement(geo, geoScale, width, layoutPose.placement, {
       bottomY: frontY + stackH,
       edgeInsetPx: insetPx,
     });
@@ -351,13 +375,18 @@ function getPhoneLayout(
     stackX = nudgePerspectiveStackX(geo, geoScale, placed.stackX, stackY, width, insetPx);
   } else {
     stackX =
-      mockupPose.placement !== "center"
-        ? applyMockupPlacementX(Math.round((width - frontW) / 2), frontW, width, mockupPose.placement)
+      layoutPose.placement !== "center"
+        ? applyMockupPlacementX(
+            Math.round((width - frontW) / 2),
+            frontW,
+            width,
+            resolveMockupPlacement(layoutPose),
+          )
         : Math.round((width - frontW) / 2);
     stackY = frontY;
   }
 
-  return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, mockupPose);
+  return buildPhoneLayout(stackX, stackY, stackW, stackH, frontW, layoutPose);
 }
 
 async function fitScreenshotToScreen(screenshot: Buffer, layout: PhoneLayout) {
@@ -527,6 +556,11 @@ async function buildTextOverlaySvg(input: {
   showAppBranding?: boolean;
   layoutStyle?: SlideLayoutStyle;
   lockedTypography?: LockedTypography;
+  locale?: LocaleCode;
+  socialProof?: SocialProofInput;
+  showSocialProof?: boolean;
+  omitSubheadline?: boolean;
+  asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
 }) {
   const {
     headline,
@@ -543,15 +577,22 @@ async function buildTextOverlaySvg(input: {
     showAppBranding = false,
     layoutStyle,
     lockedTypography,
+    locale,
+    socialProof,
+    showSocialProof = false,
+    omitSubheadline = false,
+    asoBeat,
   } = input;
 
   const scale = canvasScale(width, height);
   const profile = getCompositeLayoutProfile(width, height);
-  const fontFaceDef = await getAsoFontFaceSvgDef();
+  const fontFamily = getSvgFontFamily(locale);
+  const fontFaceDef = await getAsoFontFaceSvgDef(locale);
   const useBranding = Boolean(showAppBranding && appName && !isCta && profile.format === "app_store");
+  const effectiveSubheadline = omitSubheadline ? "" : subheadline;
   const layout = computeAsoTextLayout(
     headline,
-    subheadline,
+    effectiveSubheadline,
     headlineVerb,
     headlineDescriptor,
     width,
@@ -559,10 +600,12 @@ async function buildTextOverlaySvg(input: {
     isCta,
     lockedTypography,
     useBranding,
+    locale,
   );
 
   const usePills =
     profile.showFeaturePills &&
+    asoBeat === "hook" &&
     (layoutStyle === "hero_branded" || layoutStyle === "feature_pills") &&
     featureHighlights.length >= 2 &&
     !isCta;
@@ -617,6 +660,14 @@ async function buildTextOverlaySvg(input: {
     })
     .join("");
 
+  const captionBandH = Math.min(layout.textBlockBottom + Math.round(24 * scale), Math.round(height * 0.34));
+  const scrimHeight = Math.max(layout.fadeHeight, captionBandH + Math.round(32 * scale));
+
+  const socialProofMarkup =
+    showSocialProof && socialProof
+      ? buildSocialProofSvg({ socialProof, width, height, accentColor, fontFamily, scale })
+      : "";
+
   return {
     svg: Buffer.from(`
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -627,20 +678,28 @@ async function buildTextOverlaySvg(input: {
       <stop offset="100%" stop-color="#38bdf8"/>
     </linearGradient>
     <linearGradient id="textFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#000000" stop-opacity="${isCta ? "0.72" : "0.68"}"/>
+      <stop offset="0%" stop-color="#000000" stop-opacity="${isCta ? "0.62" : "0.58"}"/>
+      <stop offset="45%" stop-color="#000000" stop-opacity="${isCta ? "0.38" : "0.32"}"/>
+      <stop offset="75%" stop-color="#000000" stop-opacity="0.12"/>
       <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
     </linearGradient>
     <filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="textLegibility" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000000" flood-opacity="0.35"/>
     </filter>
     ${featurePills.defs}
   </defs>
-  <rect x="0" y="0" width="${width}" height="${layout.fadeHeight}" fill="url(#textFade)"/>
+  <rect x="0" y="0" width="${width}" height="${scrimHeight}" fill="url(#textFade)"/>
   ${useBranding ? buildBrandingBarSvg(appName!, accentColor, width, scale) : ""}
-  ${verbElements}
-  ${descriptorElements}
-  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="700" font-size="${layout.subSize}" fill="${accentColor}" opacity="0.92">${subTspans}</text>
-  ${featurePills.markup}
+  <g filter="url(#textLegibility)">
+  ${verbElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
+  ${descriptorElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
+  </g>
+  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${fontFamily}" font-weight="700" font-size="${layout.subSize}" fill="${accentColor}" opacity="0.78">${subTspans}</text>
+  ${featurePills.markup.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
+  ${socialProofMarkup}
 </svg>`),
     textBlockBottom: layout.textBlockBottom,
   };
@@ -675,6 +734,7 @@ async function buildPhoneStackLayer(
   height: number,
   accentColor: string,
   mockupColor?: string,
+  mockupAssetId?: MockupAssetId | null,
 ) {
   const orientation = layout.mockupPose.orientation;
   const phoneGlow = await sharp(buildPhoneGlowSvg(layout, width, height, accentColor)).png().toBuffer();
@@ -685,6 +745,7 @@ async function buildPhoneStackLayer(
       orientation,
       layout.phoneW,
       layout.phoneH,
+      mockupAssetId,
     );
 
     return sharp({
@@ -773,6 +834,7 @@ async function compositeDeviceFrame(
   height: number,
   accentColor: string,
   mockupColor?: string,
+  mockupAssetId?: MockupAssetId | null,
 ) {
   const phoneStack = await buildPhoneStackLayer(
     layout,
@@ -781,6 +843,7 @@ async function compositeDeviceFrame(
     height,
     accentColor,
     mockupColor,
+    mockupAssetId,
   );
 
   return sharp(base).composite([{ input: phoneStack, top: 0, left: 0 }]).png().toBuffer();
@@ -805,12 +868,19 @@ export async function compositeMarketingSlide({
   lockedTypography,
   mockupColor,
   mockupPose: rawMockupPose,
+  mockupAssetId,
   slideNumber,
+  locale,
+  socialProof,
+  showSocialProof = false,
+  omitSubheadline = false,
+  asoBeat,
 }: CompositeMarketingSlideInput): Promise<Buffer> {
-  const mockupPose = resolveCompositeMockupPose(rawMockupPose, slideNumber);
+  let mockupPose = resolveCompositeMockupPose(rawMockupPose, slideNumber);
   const profile = getCompositeLayoutProfile(width, height);
   const hasPills =
     profile.showFeaturePills &&
+    asoBeat === "hook" &&
     (layoutStyle === "hero_branded" || layoutStyle === "feature_pills") &&
     featureHighlights.length >= 2 &&
     !isCta &&
@@ -833,6 +903,11 @@ export async function compositeMarketingSlide({
     showAppBranding,
     layoutStyle,
     lockedTypography,
+    locale,
+    socialProof,
+    showSocialProof,
+    omitSubheadline,
+    asoBeat,
   });
 
   const textOverlay = await sharp(textOverlaySvg).png().toBuffer();
@@ -848,8 +923,22 @@ export async function compositeMarketingSlide({
       .toBuffer();
   }
 
+  const sceneAsset = getSceneMockupAsset(mockupAssetId);
+  if (sceneAsset) {
+    const withScreen = await renderSceneMockupLayer(base, screenshot, sceneAsset, width, height);
+    return sharp(withScreen)
+      .composite([{ input: textOverlay, top: 0, left: 0 }])
+      .png()
+      .toBuffer();
+  }
+
+  if (mockupPose.placement === "auto") {
+    const analysis = await analyzeBackgroundSubject(base, width, height);
+    mockupPose = resolveSubjectAwarePose(mockupPose, analysis, width, height);
+  }
+
   const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose);
+  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose, mockupAssetId);
   const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
   const withDevice = await compositeDeviceFrame(
     base,
@@ -859,6 +948,7 @@ export async function compositeMarketingSlide({
     height,
     accentColor,
     mockupColor,
+    mockupAssetId,
   );
 
   return sharp(withDevice)

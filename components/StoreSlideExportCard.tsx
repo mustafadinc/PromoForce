@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { Copy, Download, Sparkles } from "lucide-react";
 
 import { MockupPoseControls } from "@/components/MockupPoseControls";
-import type { GeneratedSlide, MockupPose, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
+import { MockupAssetSelector } from "@/components/MockupAssetSelector";
+import type { GeneratedSlide, MockupAssetId, MockupPose, StoreSlideRegenerateMode, StoreSlideRegenerateOptions } from "@/lib/campaignTypes";
 import { getBeatForSlide, storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 
 import {
@@ -24,6 +25,11 @@ import {
 
 } from "@/lib/mockupFrameColors";
 import { normalizeMockupPose } from "@/lib/mockupPose";
+import {
+  DEFAULT_MOCKUP_ASSET_ID,
+  isSceneMockup,
+  normalizeMockupAssetId,
+} from "@/lib/assetMockup";
 
 
 
@@ -55,6 +61,8 @@ type StoreSlideExportCardProps = {
 
   onSelectVariant?: (slideNumber: number, variantId: string) => void;
 
+  onOpenLiveEditor?: (slide: GeneratedSlide) => void;
+
 };
 
 
@@ -79,6 +87,8 @@ export function StoreSlideExportCard({
 
   onSelectVariant,
 
+  onOpenLiveEditor,
+
 }: StoreSlideExportCardProps) {
 
   const beat = slide.asoBeat ?? getBeatForSlide(slide.slideNumber);
@@ -93,8 +103,13 @@ export function StoreSlideExportCard({
   const [mockupPose, setMockupPose] = useState<MockupPose>(() =>
     normalizeMockupPose(slide.mockupPose, slide.slideNumber),
   );
+  const [mockupAssetId, setMockupAssetId] = useState<MockupAssetId>(() =>
+    normalizeMockupAssetId(slide.mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID),
+  );
 
-  const showMockupControls = slide.asoBeat !== "download_cta";
+  const showMockupControls = slide.asoBeat !== "download_cta" && !isSceneMockup(mockupAssetId);
+  const canComposite = Boolean(slide.backgroundDataUrl) || isSceneMockup(mockupAssetId);
+  const canLiveEdit = Boolean(onOpenLiveEditor && slide.backgroundDataUrl && !isSceneMockup(mockupAssetId));
 
 
 
@@ -107,6 +122,10 @@ export function StoreSlideExportCard({
   useEffect(() => {
     setMockupPose(normalizeMockupPose(slide.mockupPose, slide.slideNumber));
   }, [slide.mockupPose, slide.slideNumber]);
+
+  useEffect(() => {
+    setMockupAssetId(normalizeMockupAssetId(slide.mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID));
+  }, [slide.mockupAssetId, slide.slideNumber]);
 
 
 
@@ -234,6 +253,17 @@ export function StoreSlideExportCard({
 
         </button>
 
+        {canLiveEdit ? (
+          <button
+            className="slide-action slide-action-live-edit"
+            type="button"
+            disabled={isGenerating}
+            onClick={() => onOpenLiveEditor?.(slide)}
+          >
+            Edit live
+          </button>
+        ) : null}
+
         {onRegenerateSlide ? (
 
           <div className="slide-action-refine">
@@ -310,6 +340,12 @@ export function StoreSlideExportCard({
                 </>
               ) : null}
 
+              <MockupAssetSelector
+                value={mockupAssetId}
+                disabled={isGenerating}
+                onChange={setMockupAssetId}
+              />
+
               <button
 
                 className="slide-action slide-action-composite"
@@ -320,10 +356,11 @@ export function StoreSlideExportCard({
                   onRegenerateSlide(slide.slideNumber, "composite", {
                     mockupColor,
                     mockupPose: showMockupControls ? mockupPose : undefined,
+                    mockupAssetId,
                   })
                 }
 
-                disabled={isGenerating || !slide.backgroundDataUrl}
+                disabled={isGenerating || !canComposite}
 
               >
 

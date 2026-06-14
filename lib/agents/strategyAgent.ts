@@ -31,6 +31,7 @@ import {
 } from "@/lib/screenshotIntelligenceFormat";
 import { normalizeMockupPose } from "@/lib/mockupPose";
 import { alignStoreStrategyToIntelligence } from "@/lib/syncSlideToScreenshot";
+import { DEFAULT_LOCALE, getLocaleDefinition, localeExpertPrompt, type LocaleCode } from "@/lib/locales";
 
 export type { StrategyImageInput };
 export { fileToStrategyImage, prepareStrategyImages } from "@/lib/strategyImageUtils";
@@ -50,6 +51,7 @@ function normalizeSlide(
   fallbackSlide: StoreSlidePlan,
   profile: AppProfile,
   scenes: ReturnType<typeof normalizeBackgroundScenes>,
+  locale: LocaleCode,
 ): StoreSlidePlan {
   const slideNumber = index + 1;
   const asoBeat = normalizeStoreSlideBeat(raw.asoBeat, slideNumber);
@@ -75,11 +77,17 @@ function normalizeSlide(
   }
 
   const creative = normalizeSlideCreativeFields(raw, slideNumber, profile, scenes);
-  const headlines = normalizeHeadlineFields({
-    headline: String(raw.headline || fallbackSlide.headline),
-    headlineVerb: raw.headlineVerb,
-    headlineDescriptor: raw.headlineDescriptor,
-  });
+  const headlines = normalizeHeadlineFields(
+    {
+      headline: String(raw.headline || fallbackSlide.headline),
+      headlineVerb: raw.headlineVerb,
+      headlineDescriptor: raw.headlineDescriptor,
+      subheadline: raw.subheadline,
+      keywordTheme: raw.keywordTheme,
+      asoBeat,
+    },
+    locale,
+  );
 
   const screenshotRating = normalizeScreenshotRating(raw.screenshotRating);
   const screenshotIssues = Array.isArray(raw.screenshotIssues)
@@ -103,6 +111,8 @@ function normalizeSlide(
     visualVariant: String(raw.visualVariant || beatMeta.visualVariantHint).trim(),
     breakoutPanelDescription: String(raw.breakoutPanelDescription || "").trim() || undefined,
     ...creative,
+    keywordTheme: String(raw.keywordTheme || "").trim() || undefined,
+    showSocialProof: asoBeat === "social_proof" || Boolean(raw.showSocialProof),
     mockupPose:
       screenshotUsage === "none"
         ? undefined
@@ -157,7 +167,12 @@ function attachAssessmentToSlides(
   });
 }
 
-function normalizeStrategyBrief(raw: Partial<StrategyBrief>, profile: AppProfile, screenshotCount: number): StrategyBrief {
+function normalizeStrategyBrief(
+  raw: Partial<StrategyBrief>,
+  profile: AppProfile,
+  screenshotCount: number,
+  locale: LocaleCode = DEFAULT_LOCALE,
+): StrategyBrief {
   const fallback = buildFallbackStoreStrategy(profile, screenshotCount);
   const slides = Array.isArray(raw.slides) ? raw.slides.slice(0, STORE_SLIDE_COUNT) : [];
   const backgroundScenes = normalizeBackgroundScenes(raw.backgroundScenes, profile);
@@ -169,7 +184,7 @@ function normalizeStrategyBrief(raw: Partial<StrategyBrief>, profile: AppProfile
   const screenshotAssessments = normalizeScreenshotAssessments(raw.screenshotAssessments, screenshotCount);
 
   const normalizedSlides = slides.map((slide, index) =>
-    normalizeSlide(slide, index, screenshotCount, fallback.slides[index], profile, backgroundScenes),
+    normalizeSlide(slide, index, screenshotCount, fallback.slides[index], profile, backgroundScenes, locale),
   );
 
   const withScreenshots = assignUniqueScreenshots(
@@ -179,6 +194,7 @@ function normalizeStrategyBrief(raw: Partial<StrategyBrief>, profile: AppProfile
   );
 
   const brief: StrategyBrief = {
+    locale,
     positioning: String(raw.positioning || fallback.positioning).trim(),
     primaryMessage: String(raw.primaryMessage || fallback.primaryMessage).trim(),
     targetAudience: String(raw.targetAudience || fallback.targetAudience).trim(),
@@ -205,10 +221,12 @@ export async function generateStrategyBrief(
   images: StrategyImageInput[],
   colorProfile: ScreenshotColorProfile | null = null,
   screenshotIntelligence: ScreenshotIntelligence[] = [],
+  locale: LocaleCode = profile.locales?.[0] || DEFAULT_LOCALE,
 ): Promise<StrategyBrief> {
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
   const screenshotCount = images.length;
+  const localeDef = getLocaleDefinition(locale);
 
   const userContent: Array<
     | { type: "text"; text: string }
@@ -217,6 +235,7 @@ export async function generateStrategyBrief(
     {
       type: "text",
       text: [
+        `TARGET LOCALE: ${localeDef.nativeLabel} (${localeDef.code}). Write ALL copy natively — not a translation.`,
         buildAsoStrategyPromptBlock(profile, screenshotCount),
         screenshotIntelligence.length
           ? formatScreenshotIntelligenceForPrompt(profile, screenshotIntelligence)
@@ -258,14 +277,18 @@ export async function generateStrategyBrief(
           {
             role: "system",
             content: [
+              localeExpertPrompt(localeDef),
               "You are a senior App Store Optimization (ASO) strategist and creative director.",
               "You design 5-slide screenshot sets that convert browsers into installers.",
-              "Every set tells ONE cohesive story with varied slides — never clone the same layout/copy, never feel like random unrelated ads.",
-              "Headlines are benefit-first, short, and unique per slide.",
+              "Every set tells ONE cohesive story: slide 1 pain/desire → slide 2 relief → slides 3–4 proof → slide 5 CTA recap.",
+              "Never use CTA verbs on slide 1 hook. Slide 5 must recap benefits from earlier slides.",
+              "Headlines are benefit-first, 3–6 words, one keyword theme per slide (Apple OCR-indexes caption text).",
+              "Do NOT repeat the same VERB+DESCRIPTOR headline template on every slide.",
+              "featureHighlights and all copy must be in the target locale language.",
               "Match uploaded screenshots to the slide where they best prove the message.",
-              "As creative director, decide deliberately which backgrounds include people, which are environment-only, which are abstract brand worlds, and which slides reuse the same generated background.",
-              "For each screenshot slide (1–4), mockupPose MUST use orientation tilt_left or tilt_right (never upright) — premium 3D ASO showcase like SWAY. Slide 1: tilt_right, hero, placement right. Vary tilt/placement on other slides so backgrounds stay visible.",
-              "Rate each uploaded screenshot great, usable, or retake with specific issues. Split every headline into headlineVerb (action verb) and headlineDescriptor (benefit words), both uppercase.",
+              "Prefer lifestyle_with_person or lifestyle_environment backgrounds — reserve abstract_brand for CTA only.",
+              "For each screenshot slide (1–4), mockupPose MUST use orientation tilt_left or tilt_right (never upright). Use placement auto or explicit left/right. sceneDescription must place people on the opposite side from the device.",
+              "Rate each uploaded screenshot great, usable, or retake with specific issues. Split every headline into headlineVerb and headlineDescriptor when appropriate for the locale.",
             ].join(" "),
           },
           {
@@ -292,7 +315,7 @@ export async function generateStrategyBrief(
     return alignStoreStrategyToIntelligence(
       attachScreenshotIntelligence(
         applyScreenshotColorHarmonyToStoreBrief(
-          normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount),
+          normalizeStrategyBrief(JSON.parse(content) as Partial<StrategyBrief>, profile, screenshotCount, locale),
           colorProfile,
         ),
         screenshotIntelligence,
@@ -300,7 +323,7 @@ export async function generateStrategyBrief(
       profile,
     );
   } catch {
-    return alignStoreStrategyToIntelligence(
+    const fallbackBrief = alignStoreStrategyToIntelligence(
       attachScreenshotIntelligence(
         applyScreenshotColorHarmonyToStoreBrief(
           applyCreativeDirectorDefaults(buildFallbackStoreStrategy(profile, screenshotCount), profile),
@@ -310,5 +333,47 @@ export async function generateStrategyBrief(
       ),
       profile,
     );
+    return { ...fallbackBrief, locale };
   }
+}
+
+export async function generateMultiLocaleStrategyBriefs(
+  profile: AppProfile,
+  localeContexts: Partial<
+    Record<
+      LocaleCode,
+      {
+        colorProfile: import("@/lib/campaignTypes").ScreenshotColorProfile | null;
+        screenshotIntelligence: ScreenshotIntelligence[];
+        images: StrategyImageInput[];
+      }
+    >
+  >,
+) {
+  const locales = profile.locales?.length ? profile.locales : [DEFAULT_LOCALE];
+  const strategies: Partial<Record<LocaleCode, StrategyBrief>> = {};
+  let combinedIntelligence: ScreenshotIntelligence[] = [];
+
+  for (const locale of locales) {
+    const ctx = localeContexts[locale];
+    if (!ctx?.images.length) continue;
+
+    const brief = await generateStrategyBrief(
+      profile,
+      ctx.images,
+      ctx.colorProfile,
+      ctx.screenshotIntelligence,
+      locale,
+    );
+    strategies[locale] = brief;
+    combinedIntelligence = [...combinedIntelligence, ...ctx.screenshotIntelligence];
+  }
+
+  const primaryLocale = locales.find((l) => strategies[l]) || locales[0] || DEFAULT_LOCALE;
+  return {
+    strategies,
+    primaryLocale,
+    strategy: strategies[primaryLocale]!,
+    screenshotIntelligence: combinedIntelligence,
+  };
 }

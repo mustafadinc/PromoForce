@@ -10,6 +10,12 @@ import { createSolidBackground } from "@/lib/createSolidBackground";
 import { isSlideSolidBackground } from "@/lib/storeCreativeDirector";
 import { computeLockedTypographyFromHeadline } from "@/lib/asoTextLayout";
 import { compositeMarketingSlide, parseImageSize } from "@/lib/compositeMarketingSlide";
+import {
+  getSceneMockupAsset,
+  normalizeMockupAssetId,
+  type MockupAssetId,
+} from "@/lib/assetMockup";
+import { loadSceneMockupBuffer } from "@/lib/renderAssetDevice";
 import type {
   BackgroundTreatment,
   LockedTypography,
@@ -436,6 +442,11 @@ export type GenerateStoreSlideInput = {
   visualTemplate?: VisualTemplateId;
   mockupColor?: string;
   mockupPose?: import("@/lib/mockupPose").MockupPose;
+  mockupAssetId?: MockupAssetId;
+  locale?: import("@/lib/locales").LocaleCode;
+  socialProof?: import("@/lib/campaignTypes").SocialProofInput;
+  showSocialProof?: boolean;
+  omitSubheadline?: boolean;
 };
 
 export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput): AsyncGenerator<ImageStreamEvent> {
@@ -448,6 +459,10 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
   let revisedPrompt: string | undefined;
   let modelUsed: string | undefined;
   const regenerateMode = input.regenerateMode || "full";
+  const mockupAssetId = normalizeMockupAssetId(
+    input.mockupAssetId ?? input.slidePlan?.mockupAssetId,
+  );
+  const sceneAsset = getSceneMockupAsset(mockupAssetId);
 
   if (regenerateMode === "composite") {
     if (!input.existingBackgroundBase64) {
@@ -458,8 +473,14 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
       return;
     }
     yield { type: "status", message: "Reusing saved background — recompositing mockup..." };
-    backgroundBuffer = Buffer.from(input.existingBackgroundBase64, "base64");
-    modelUsed = "saved-background";
+    backgroundBuffer = sceneAsset
+      ? await loadSceneMockupBuffer(sceneAsset, width, height)
+      : Buffer.from(input.existingBackgroundBase64, "base64");
+    modelUsed = sceneAsset ? "scene-mockup" : "saved-background";
+  } else if (sceneAsset) {
+    yield { type: "status", message: `Loading ${sceneAsset.label} scene mockup...` };
+    backgroundBuffer = await loadSceneMockupBuffer(sceneAsset, width, height);
+    modelUsed = "scene-mockup";
   } else if (regenerateMode !== "background" && input.cachedBackgroundBase64) {
     yield {
       type: "status",
@@ -533,6 +554,7 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
       width,
       height,
       isCta,
+      input.locale,
     );
   }
 
@@ -569,7 +591,13 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
         lockedTypography,
         mockupColor: input.mockupColor,
         mockupPose: input.mockupPose ?? input.slidePlan?.mockupPose,
+        mockupAssetId,
         slideNumber: input.slidePlan?.slideNumber,
+        locale: input.locale,
+        socialProof: input.socialProof,
+        showSocialProof: input.showSocialProof,
+        omitSubheadline: input.omitSubheadline,
+        asoBeat: input.slidePlan?.asoBeat,
       });
 
   yield {

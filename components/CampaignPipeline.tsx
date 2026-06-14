@@ -36,7 +36,10 @@ export function CampaignPipeline() {
     campaignType,
     profile,
     screenshots,
+    screenshotsByLocale,
     storeStrategy,
+    storeStrategiesByLocale,
+    activeLocale,
     socialStrategy,
     autopilotStrategy,
     screenshotPreviews,
@@ -50,6 +53,10 @@ export function CampaignPipeline() {
     progressLabel,
     partialPreviewUrl,
     regeneratingSlideNumber,
+    coherenceAudit,
+    isAuditing,
+    localeMismatchCount,
+    refreshCoherenceAudit,
     usageRefreshKey,
     createStrategy,
     generateCampaign,
@@ -59,11 +66,14 @@ export function CampaignPipeline() {
     goToStrategy,
     goToGallery,
     setStoreStrategy,
+    switchActiveLocale,
     setSocialStrategy,
     setAutopilotStrategy,
     resetStrategyToAi,
     regenerateStoreSlide,
     selectSlideVariant,
+    updateGeneratedSlideFromEditor,
+    revertGeneratedSlideToOriginal,
   } = useCampaignPipeline();
 
   const isStore = campaignType === "app_store";
@@ -162,6 +172,7 @@ export function CampaignPipeline() {
                 errorMessage={errorMessage}
                 isBusy={isPlanning}
                 initialScreenshots={screenshots}
+                initialScreenshotsByLocale={screenshotsByLocale}
                 onDraftChange={setSetupDraft}
                 onSubmit={createStrategy}
                 submitLabel={isPlanning ? "Planning Strategy..." : "Generate Campaign Strategy"}
@@ -195,11 +206,17 @@ export function CampaignPipeline() {
                     screenshotPreviews={screenshotPreviews}
                     hasEdits={hasEdits}
                     isGenerating={isGenerating}
+                    activeLocale={activeLocale}
+                    locales={Object.keys(storeStrategiesByLocale) as import("@/lib/campaignTypes").LocaleCode[]}
+                    onLocaleChange={switchActiveLocale}
                     onStrategyChange={setStoreStrategy}
                     onResetStrategy={resetStrategyToAi}
                     onGenerate={generateCampaign}
                     onBack={goBackToSetup}
                     onCancel={cancelGeneration}
+                    coherenceAudit={coherenceAudit}
+                    isAuditing={isAuditing}
+                    localeMismatchCount={localeMismatchCount}
                   />
                 ) : isSocial ? (
                   <SocialStrategyPreview
@@ -257,6 +274,8 @@ export function CampaignPipeline() {
                   <StoreSetGallery
                     slides={generatedSlides}
                     strategy={storeStrategy}
+                    appProfile={profile}
+                    screenshotPreviews={screenshotPreviews}
                     progressLabel={progressLabel}
                     partialPreviewUrl={partialPreviewUrl}
                     regeneratingSlideNumber={regeneratingSlideNumber}
@@ -265,6 +284,8 @@ export function CampaignPipeline() {
                     onCancel={cancelGeneration}
                     onRegenerateSlide={regenerateStoreSlide}
                     onSelectVariant={selectSlideVariant}
+                    onUpdateSlideFromEditor={updateGeneratedSlideFromEditor}
+                    onRevertSlideToOriginal={revertGeneratedSlideToOriginal}
                   />
                 ) : isSocial ? (
                   <SocialPackGallery

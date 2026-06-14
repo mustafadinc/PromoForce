@@ -8,13 +8,11 @@
  * Copy the quad/dimensions it prints into lib/assetMockup.ts.
  */
 import { readPsd, initializeCanvas } from 'ag-psd';
+import { createCanvas } from '@napi-rs/canvas';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import sharp from 'sharp';
 
-initializeCanvas(
-  () => { throw new Error('createCanvas not supported'); },
-  (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
-);
+initializeCanvas(createCanvas);
 
 const psdPath = process.argv[2];
 const assetDir = process.argv[3] || 'public/mockups';

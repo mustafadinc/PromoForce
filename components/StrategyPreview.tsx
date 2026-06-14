@@ -7,9 +7,14 @@ import { SetOverviewPanel } from "@/components/SetOverviewPanel";
 import { StoreSlideEditor } from "@/components/StoreSlideEditor";
 import { StrategyCarousel, type CarouselStep } from "@/components/StrategyCarousel";
 import { StrategyToolbar } from "@/components/StrategyToolbar";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { StrategyPreflightPanel } from "@/components/StrategyPreflightPanel";
+import { lintStrategyNarrative } from "@/lib/narrativeLint";
+import type { SetCoherenceAudit } from "@/lib/agents/setCoherenceAgent";
 import { coerceStrategyText } from "@/lib/strategyText";
 import type {
   BackgroundTreatment,
+  LocaleCode,
   ScreenshotQualityRating,
   SetMode,
   StoreSlidePlan,
@@ -44,11 +49,17 @@ type StrategyPreviewProps = {
   screenshotPreviews: ScreenshotPreview[];
   isGenerating: boolean;
   hasEdits: boolean;
+  activeLocale?: LocaleCode;
+  locales?: LocaleCode[];
+  onLocaleChange?: (locale: LocaleCode) => void;
   onStrategyChange: (strategy: StrategyBrief) => void;
   onResetStrategy: () => void;
   onGenerate: (options?: { variantsPerSlide?: number }) => void;
   onBack: () => void;
   onCancel?: () => void;
+  coherenceAudit?: SetCoherenceAudit | null;
+  isAuditing?: boolean;
+  localeMismatchCount?: number;
 };
 
 const treatmentLabels: Record<BackgroundTreatment, string> = {
@@ -87,11 +98,17 @@ export function StrategyPreview({
   screenshotPreviews,
   isGenerating,
   hasEdits,
+  activeLocale = "en",
+  locales = [],
+  onLocaleChange,
   onStrategyChange,
   onResetStrategy,
   onGenerate,
   onBack,
   onCancel,
+  coherenceAudit = null,
+  isAuditing = false,
+  localeMismatchCount = 0,
 }: StrategyPreviewProps) {
   const screenshotCount = screenshotPreviews.length;
   const [stepIndex, setStepIndex] = useState(0);
@@ -110,18 +127,35 @@ export function StrategyPreview({
 
   const aspectIssues = useMemo(() => lintScreenshotAspects(screenshotPreviews), [screenshotPreviews]);
 
+  const narrativeLint = useMemo(
+    () => (strategy ? lintStrategyNarrative(strategy) : null),
+    [strategy],
+  );
+
+  const retakeCount =
+    strategy?.screenshotAssessments?.filter((a) => a.rating === "retake").length ?? 0;
+
   const hasRetakeScreenshots =
     strategy?.screenshotAssessments?.some((assessment) => assessment.rating === "retake") ?? false;
 
   const requestGenerate = (options?: { variantsPerSlide?: number }) => {
-    if (hasRetakeScreenshots || aspectIssues.length) {
-      const reasons: string[] = [];
-      if (hasRetakeScreenshots) {
-        reasons.push("Some screenshots are rated Retake.");
-      }
-      if (aspectIssues.length) {
-        reasons.push(`${aspectIssues.length} screenshot(s) have non–App Store aspect.`);
-      }
+    const reasons: string[] = [];
+    if (narrativeLint && !narrativeLint.ok) {
+      reasons.push(`${narrativeLint.criticalCount} narrative issue(s) — hook/CTA flow may not convert.`);
+    }
+    if (coherenceAudit && coherenceAudit.overallScore < 80) {
+      reasons.push(`Coherence score ${coherenceAudit.overallScore}/100 is below 80.`);
+    }
+    if (hasRetakeScreenshots) {
+      reasons.push("Some screenshots are rated Retake.");
+    }
+    if (aspectIssues.length) {
+      reasons.push(`${aspectIssues.length} screenshot(s) have non–App Store aspect.`);
+    }
+    if (localeMismatchCount > 0) {
+      reasons.push(`${localeMismatchCount} locale has UI language mismatch.`);
+    }
+    if (reasons.length) {
       const ok = window.confirm(`${reasons.join(" ")}\n\nGenerate anyway?`);
       if (!ok) return;
     }
@@ -210,6 +244,12 @@ export function StrategyPreview({
 
   return (
     <section className="preview-panel pf-strategy-panel">
+      <LocaleSwitcher
+        locales={locales.length ? locales : strategy?.locale ? [strategy.locale] : ["en"]}
+        activeLocale={activeLocale}
+        onChange={(locale) => onLocaleChange?.(locale)}
+        disabled={isGenerating}
+      />
       <StrategyToolbar
         eyebrow="ASO Screenshot Strategy"
         title="Review one slide at a time"
@@ -253,6 +293,32 @@ export function StrategyPreview({
         narrativeArc={isBriefStep ? strategy.narrativeArc : undefined}
         activeSlideNumber={isBriefStep ? null : activeSlide?.slideNumber ?? null}
         onSelectSlide={goToSlide}
+      />
+
+      {narrativeLint && !narrativeLint.ok ? (
+        <div className="strategy-warning pf-narrative-lint-banner">
+          <strong>Narrative issues</strong>
+          <ul>
+            {narrativeLint.issues
+              .filter((issue) => issue.severity === "error")
+              .slice(0, 4)
+              .map((issue, index) => (
+                <li key={`${issue.code}-${index}`}>
+                  {issue.slideNumber ? `Slide ${issue.slideNumber}: ` : ""}
+                  {issue.message}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <StrategyPreflightPanel
+        narrativeLint={narrativeLint ?? { ok: true, criticalCount: 0, warningCount: 0, issues: [] }}
+        coherenceAudit={coherenceAudit}
+        retakeCount={retakeCount}
+        aspectIssueCount={aspectIssues.length}
+        localeMismatchCount={localeMismatchCount}
+        isAuditing={isAuditing}
       />
 
       <StrategyCarousel steps={steps} activeIndex={stepIndex} onActiveIndexChange={setStepIndex}>

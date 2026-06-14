@@ -1,6 +1,10 @@
 import type { MockupPose } from "@/lib/mockupPose";
+import type { LocaleCode } from "@/lib/locales";
+import type { MockupAssetId } from "@/lib/assetMockup";
 
 export type { MockupOrientation, MockupPlacement, MockupPose, MockupScale } from "@/lib/mockupPose";
+export type { MockupAssetId } from "@/lib/assetMockup";
+export type { LocaleCode } from "@/lib/locales";
 
 export type CampaignType = "app_store" | "social_launch" | "marketing_autopilot";
 
@@ -77,11 +81,28 @@ export const PLAN_LIMITS: Record<UsagePlan, { dailyGenerations: number; label: s
   pro: { dailyGenerations: 500, label: "Pro" },
 };
 
+export type SocialProofInput = {
+  reviewQuotes?: string[];
+  rating?: number;
+  downloadCount?: string;
+  awards?: string[];
+};
+
 export type AppProfile = {
   appName: string;
   category: string;
   description: string;
   targetAudience: string;
+  /** App Store listing title (for ASO keyword reinforcement). */
+  appTitle?: string;
+  /** App Store subtitle (for ASO keyword reinforcement). */
+  appSubtitle?: string;
+  /** Comma-separated App Store keyword field values to distribute across slides. */
+  keywords?: string;
+  /** Target locales for copy + backgrounds (default: en). */
+  locales?: LocaleCode[];
+  /** Optional social proof for proof-beat slides. */
+  socialProof?: SocialProofInput;
 };
 
 export type SlideRole = "hero" | "feature" | "cta";
@@ -199,13 +220,21 @@ export type StoreSlidePlan = {
   layoutStyle: SlideLayoutStyle;
   headlineAccent: string;
   featureHighlights: string[];
+  /** Primary ASO keyword theme for this slide (OCR-indexed caption). */
+  keywordTheme?: string;
+  /** Whether to show social proof overlay on this slide. */
+  showSocialProof?: boolean;
   showAppBranding: boolean;
   backgroundRationale: string;
   breakoutPanelDescription?: string;
   mockupPose?: MockupPose;
+  /** Baked PSD mockup template (device showcase or lifestyle scene). */
+  mockupAssetId?: MockupAssetId;
 };
 
 export type StrategyBrief = {
+  /** Locale this brief was generated for. */
+  locale?: LocaleCode;
   positioning: string;
   primaryMessage: string;
   targetAudience: string;
@@ -223,16 +252,94 @@ export type StrategyBrief = {
   colorProfile?: ScreenshotColorProfile | null;
 };
 
+export type MultiLocaleStrategyResult = {
+  strategies: Partial<Record<LocaleCode, StrategyBrief>>;
+  screenshotIntelligence?: ScreenshotIntelligence[];
+  primaryLocale: LocaleCode;
+};
+
 export type GeneratedSlideVariant = {
   id: string;
   dataUrl: string;
   prompt: string;
 };
 
+/** Normalized device transform for the live slide editor (0..1 canvas fractions). */
+export type SlideEditorDeviceState = {
+  xPct: number;
+  yPct: number;
+  scale: number;
+  rotationDeg: number;
+  frameColor: string;
+  mockupAssetId?: MockupAssetId;
+};
+
+/** Per text block styling in the live editor. */
+export type SlideEditorTextBlockId = "verb" | "descriptor" | "accent" | "sub" | "branding";
+
+export type SlideEditorTextBlockStyle = {
+  offsetX?: number;
+  offsetY?: number;
+  color?: string;
+  gradientEnd?: string;
+  useGradient?: boolean;
+  opacity?: number;
+};
+
+export type SlideEditorTextStyles = Partial<Record<SlideEditorTextBlockId, SlideEditorTextBlockStyle>>;
+
+/** Layers the user can hide/remove in the live editor. */
+export type SlideEditorHiddenLayer =
+  | SlideEditorTextBlockId
+  | "device"
+  | "featurePills"
+  | "socialProof";
+
+export type SlideEditorHiddenLayers = Partial<Record<SlideEditorHiddenLayer, boolean>>;
+
+/** @deprecated Use textStyles block offsets instead */
+export type SlideEditorTextOffsets = {
+  headlineOffsetX?: number;
+  headlineOffsetY?: number;
+  subOffsetX?: number;
+  subOffsetY?: number;
+};
+
+export type SlideEditorOverlayOffsets = {
+  brandingOffsetX?: number;
+  brandingOffsetY?: number;
+  pillsOffsetX?: number;
+  pillsOffsetY?: number;
+  socialProofOffsetX?: number;
+  socialProofOffsetY?: number;
+};
+
+export type SlideEditorOverrides = {
+  headlineVerb?: string;
+  headlineDescriptor?: string;
+  subheadline?: string;
+  headlineAccent?: string;
+};
+
+export type SlideEditorState = {
+  version: number;
+  device: SlideEditorDeviceState;
+  /** @deprecated migrated to textStyles */
+  text?: SlideEditorTextOffsets;
+  textStyles?: SlideEditorTextStyles;
+  overlays?: SlideEditorOverlayOffsets;
+  overrides?: SlideEditorOverrides;
+  /** true = layer hidden on canvas and export */
+  hiddenLayers?: SlideEditorHiddenLayers;
+};
+
+export const SLIDE_EDITOR_STATE_VERSION = 4;
+
 export type GeneratedSlide = {
   slideNumber: number;
   role: SlideRole;
   asoBeat?: StoreSlideBeat;
+  locale?: LocaleCode;
   headline: string;
   subheadline: string;
   dataUrl: string;
@@ -240,7 +347,11 @@ export type GeneratedSlide = {
   backgroundDataUrl?: string;
   mockupColor?: string;
   mockupPose?: MockupPose;
+  mockupAssetId?: MockupAssetId;
   renderVersion?: number;
+  /** Server composite before first live-editor save — used for revert. */
+  sourceDataUrl?: string;
+  editorState?: SlideEditorState;
   variants?: GeneratedSlideVariant[];
   selectedVariantId?: string;
 };
@@ -250,6 +361,7 @@ export type StoreSlideRegenerateMode = "full" | "background" | "composite";
 export type StoreSlideRegenerateOptions = {
   mockupColor?: string;
   mockupPose?: MockupPose;
+  mockupAssetId?: MockupAssetId;
 };
 
 export type UploadedScreenshot = {
@@ -258,7 +370,10 @@ export type UploadedScreenshot = {
   index: number;
   width?: number;
   height?: number;
+  locale?: LocaleCode;
 };
+
+export type LocaleScreenshotsMap = Partial<Record<LocaleCode, UploadedScreenshot[]>>;
 
 export const STORE_SLIDE_COUNT = 5;
 export const SOCIAL_ASSET_COUNT = 4;

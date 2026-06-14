@@ -6,6 +6,7 @@ import { createAssetStreamResponse } from "@/lib/createAssetStreamResponse";
 import { getAppStoreGenerationSize } from "@/lib/appStoreImageSizes";
 import type { AppProfile, LockedTypography, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
 import { normalizeMockupPose } from "@/lib/mockupPose";
+import { normalizeMockupAssetId } from "@/lib/assetMockup";
 import { extractSlideScreenshot, parseAppProfile } from "@/lib/parseCampaignForm";
 
 function parseStrategy(formData: FormData): StrategyBrief {
@@ -76,6 +77,9 @@ export async function POST(request: Request) {
       mockupPoseOverride = undefined;
     }
     const mockupPose = mockupPoseOverride ?? slide.mockupPose;
+    const mockupAssetId = normalizeMockupAssetId(
+      String(formData.get("mockupAssetId") || "") || slide.mockupAssetId,
+    );
     const styleAnchorHint =
       slide.slideNumber !== strategy.styleAnchorSlide
         ? `Cohesive with slide ${strategy.styleAnchorSlide} — same polish and brand intensity.`
@@ -84,6 +88,7 @@ export async function POST(request: Request) {
     const prompt = buildStoreSlidePrompt(profile, strategy, slide);
     const backgroundPrompt = buildStoreSlideBackgroundPrompt(profile, strategy, slide, {
       styleAnchorHint,
+      mockupPose,
     });
     const screenshot =
       slide.screenshotIndex !== null && slide.screenshotIndex >= 0
@@ -126,7 +131,12 @@ export async function POST(request: Request) {
         existingBackgroundBase64,
         mockupColor,
         mockupPose,
+        mockupAssetId,
         styleAnchorSlide: strategy.styleAnchorSlide,
+        locale: strategy.locale,
+        socialProof: profile.socialProof,
+        showSocialProof: slide.showSocialProof,
+        omitSubheadline: slide.asoBeat === "hook",
       },
       {
         mode: "provider",

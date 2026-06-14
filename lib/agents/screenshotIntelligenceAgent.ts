@@ -1,3 +1,4 @@
+import type { LocaleCode } from "@/lib/locales";
 import type { AppProfile, ScreenshotColorProfile, ScreenshotIntelligence } from "@/lib/campaignTypes";
 import { normalizeScreenshotIntelligence } from "@/lib/screenshotIntelligenceFormat";
 import type { StrategyImageInput } from "@/lib/strategyImageUtils";
@@ -39,6 +40,7 @@ export async function analyzeScreenshotIntelligence(
   profile: AppProfile,
   images: StrategyImageInput[],
   colorProfile: ScreenshotColorProfile | null = null,
+  locale: LocaleCode = "en",
 ): Promise<ScreenshotIntelligence[]> {
   if (!images.length) return [];
 
@@ -53,6 +55,7 @@ export async function analyzeScreenshotIntelligence(
     `Category: ${profile.category}`,
     `Description: ${profile.description}`,
     `Audience: ${profile.targetAudience || "Mobile users"}`,
+    `Target market locale: ${locale} — suggestedHeadlines and suggestedBenefits MUST be written in this language.`,
     colorProfile
       ? `UI tone from color sampling: ${colorProfile.uiTone}, accent ${colorProfile.accentColor}`
       : "",
@@ -77,7 +80,7 @@ export async function analyzeScreenshotIntelligence(
     "",
     "Rules:",
     "- Read each image carefully — only claim features visible on THAT screen.",
-    "- suggestedHeadlines must be benefit-led, ≤8 words, not generic app name alone.",
+    "- suggestedHeadlines must be benefit-led, ≤8 words, in the target locale language, not generic app name alone.",
     "- Rate retake if blurry, cropped UI, placeholder text, or empty states.",
     "- recommendedSlideBeats: pick 1–2 beats this screen best supports in an App Store set.",
   ]

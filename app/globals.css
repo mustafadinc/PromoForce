@@ -1359,6 +1359,20 @@ canvas:hover {
   margin-top: 4px;
 }
 
+.mockup-asset-selector {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mockup-asset-thumb {
+  width: 72px;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--pf-border, rgba(255, 255, 255, 0.12));
+  object-fit: cover;
+}
+
 .mockup-pose-strategy-row {
   display: grid;
   gap: 12px;
@@ -2981,6 +2995,102 @@ canvas:hover {
 .pf-upload-block {
   display: grid;
   gap: 10px;
+}
+
+.pf-upload-block-locale + .pf-upload-block-locale {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pf-upload-locale-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pf-setup-locale-preview + .pf-setup-locale-preview {
+  margin-top: 24px;
+}
+
+.pf-setup-locale-preview-title {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.pf-preflight-panel {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pf-preflight-panel.is-ready {
+  border-color: rgba(69, 214, 181, 0.25);
+}
+
+.pf-preflight-panel.has-warnings {
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.pf-preflight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pf-preflight-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pf-preflight-status-ok {
+  color: #45d6b5;
+}
+
+.pf-preflight-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.pf-preflight-checklist li.is-pass {
+  color: #45d6b5;
+}
+
+.pf-preflight-checklist li.is-warn {
+  color: #fbbf24;
+}
+
+.pf-preflight-checklist li.is-fail {
+  color: #f87171;
+}
+
+.pf-preflight-checklist li.is-pending {
+  color: var(--muted);
+}
+
+.pf-preflight-issues {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pf-preflight-issues .is-error {
+  color: #f87171;
+}
+
+.pf-narrative-lint-banner {
+  margin: 12px 0;
 }
 
 .pf-upload-zone {
@@ -6133,4 +6243,246 @@ canvas:hover {
   margin: 6px 0 0;
   font-size: 11px;
   opacity: 0.7;
+}
+
+.locale-switcher,
+.locale-picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.locale-switcher button,
+.locale-picker-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.locale-switcher button.is-active {
+  border-color: rgba(45, 212, 191, 0.55);
+  background: rgba(45, 212, 191, 0.12);
+}
+
+.locale-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.pf-live-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(4, 8, 16, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.pf-live-editor-shell {
+  width: min(1280px, 100%);
+  max-height: calc(100vh - 32px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.pf-live-editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pf-live-editor-header h2 {
+  margin: 4px 0;
+  font-size: 1.35rem;
+}
+
+.pf-live-editor-header p {
+  margin: 0;
+  opacity: 0.78;
+  font-size: 0.92rem;
+}
+
+.pf-live-editor-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pf-live-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pf-live-editor-stage-host {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 12px;
+}
+
+.pf-live-editor-inline-input {
+  position: fixed;
+  z-index: 130;
+  min-height: 2.2em;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 212, 191, 0.55);
+  background: rgba(8, 12, 20, 0.92);
+  color: #fff;
+  font-weight: 800;
+  line-height: 1.2;
+  resize: none;
+  outline: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.pf-live-editor-hint {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  opacity: 0.72;
+}
+
+.pf-text-block-controls {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pf-text-block-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.pf-field-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pf-field-inline input[type="color"] {
+  width: 42px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pf-field-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row;
+}
+
+.pf-text-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pf-layer-hide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pf-layer-hide-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-hidden-layer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pf-restore-layer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.pf-restore-layer-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pf-overlay-control {
+  margin-bottom: 4px;
+}
+
+.pf-live-editor-stage {
+  transform-origin: top left;
+}
+
+.pf-live-editor-loading {
+  padding: 24px;
+  opacity: 0.7;
+}
+
+.pf-live-editor-panel {
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding-right: 4px;
+}
+
+.pf-live-editor-section {
+  display: grid;
+  gap: 10px;
+}
+
+.slide-action-live-edit {
+  border-color: rgba(45, 212, 191, 0.35);
+  background: rgba(45, 212, 191, 0.08);
+}
+
+@media (max-width: 960px) {
+  .pf-live-editor-body {
+    grid-template-columns: 1fr;
+  }
+
+  .pf-live-editor-panel {
+    max-height: 240px;
+  }
 }

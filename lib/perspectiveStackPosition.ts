@@ -1,6 +1,8 @@
 import type { PerspectivePhoneGeometry } from "@/lib/mockupPerspectiveGeometry";
 import type { MockupPlacement } from "@/lib/mockupPose";
 
+type ResolvedPlacement = Exclude<MockupPlacement, "auto">;
+
 export type PerspectiveStackPlacement = {
   stackX: number;
   stackY: number;
@@ -10,7 +12,7 @@ export type PerspectiveStackPlacement = {
 
 /** Where the front-face center should sit (ASO hero — front readable, bg on opposite side). */
 /** SWAY-style hero: front face center on canvas (placement right = show left bg). */
-const FRONT_CENTER_X_RATIO: Record<MockupPlacement, number> = {
+const FRONT_CENTER_X_RATIO: Record<ResolvedPlacement, number> = {
   center: 0.52,
   left: 0.46,
   right: 0.56,
@@ -39,29 +41,33 @@ export function computePerspectiveStackPlacement(
     edgeInsetPx?: number;
   },
 ): PerspectiveStackPlacement {
+  const resolvedPlacement =
+    placement === "auto"
+      ? "right"
+      : placement;
   const boxW = Math.ceil((geo.bounds.maxX - geo.bounds.minX) * scale);
   const boxH = Math.ceil((geo.bounds.maxY - geo.bounds.minY) * scale);
   const inset = options.edgeInsetPx ?? Math.round(canvasWidth * 0.07);
 
   let stackX: number;
-  if (geo.side && placement !== "center") {
+  if (geo.side && resolvedPlacement !== "center") {
     const { cx, bottomY } = frontFaceAnchor(geo);
     const targetFcX = Math.max(
       inset,
-      Math.min(canvasWidth - inset, Math.round(canvasWidth * FRONT_CENTER_X_RATIO[placement])),
+      Math.min(canvasWidth - inset, Math.round(canvasWidth * FRONT_CENTER_X_RATIO[resolvedPlacement])),
     );
     stackX = Math.round(targetFcX - cx * scale);
   } else {
     let targetMinX = Math.round((canvasWidth - boxW) / 2);
-    if (placement === "left") {
+    if (resolvedPlacement === "left") {
       targetMinX = inset;
-    } else if (placement === "right") {
+    } else if (resolvedPlacement === "right") {
       targetMinX = Math.max(inset, canvasWidth - inset - boxW);
     }
     stackX = Math.round(targetMinX - geo.bounds.minX * scale);
   }
 
-  const anchorBottomY = geo.side && placement !== "center" ? frontFaceAnchor(geo).bottomY : geo.bounds.maxY;
+  const anchorBottomY = geo.side && resolvedPlacement !== "center" ? frontFaceAnchor(geo).bottomY : geo.bounds.maxY;
   let stackY = Math.round(options.bottomY - anchorBottomY * scale);
   if (options.marginTop !== undefined) {
     const minStackY = Math.ceil(options.marginTop - geo.bounds.minY * scale);

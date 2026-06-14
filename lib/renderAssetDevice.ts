@@ -5,9 +5,13 @@ import sharp from "sharp";
 
 import { cleanWarpAlphaFringe, sampleBilinearPremultiplied } from "@/lib/alphaBilinearSample";
 import {
-  ASSET_DEVICE,
   assetDeviceMirrored,
   assetScreenQuad,
+  getDeviceMockupAsset,
+  getSceneMockupAsset,
+  sceneScreenQuad,
+  type MockupAssetId,
+  type SceneMockupAsset,
 } from "@/lib/assetMockup";
 import type { MockupOrientation } from "@/lib/mockupPose";
 import type { PerspectiveQuad } from "@/lib/mockupPerspectiveGeometry";
@@ -20,32 +24,58 @@ type DeviceRaster = {
   data: Buffer;
   width: number;
   height: number;
-  /** Alpha=255 where the glass screen is (near-black opaque region). */
   screenMask: Uint8Array;
 };
 
-let sourcePromise: Promise<Buffer> | null = null;
-function loadDeviceSource(): Promise<Buffer> {
-  if (!sourcePromise) {
-    const file = path.join(process.cwd(), ...ASSET_DEVICE.fsPath);
-    sourcePromise = readFile(file);
-  }
-  return sourcePromise;
+const deviceSourceCache = new Map<MockupAssetId, Promise<Buffer>>();
+const sceneSourceCache = new Map<MockupAssetId, Promise<Buffer>>();
+const rasterCache = new Map<string, Promise<DeviceRaster>>();
+
+function loadDeviceSource(mockupAssetId: MockupAssetId): Promise<Buffer> {
+  const existing = deviceSourceCache.get(mockupAssetId);
+  if (existing) return existing;
+
+  const asset = getDeviceMockupAsset(mockupAssetId);
+  const promise = readFile(path.join(process.cwd(), ...asset.fsPath));
+  deviceSourceCache.set(mockupAssetId, promise);
+  return promise;
 }
 
-const rasterCache = new Map<string, Promise<DeviceRaster>>();
+export async function loadSceneMockupBuffer(
+  asset: SceneMockupAsset,
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const source = await loadSceneSource(asset.id);
+  return sharp(source)
+    .resize(width, height, { fit: "cover", position: "centre" })
+    .png()
+    .toBuffer();
+}
+
+function loadSceneSource(mockupAssetId: MockupAssetId): Promise<Buffer> {
+  const existing = sceneSourceCache.get(mockupAssetId);
+  if (existing) return existing;
+
+  const asset = getSceneMockupAsset(mockupAssetId);
+  if (!asset) throw new Error(`Not a scene mockup: ${mockupAssetId}`);
+  const promise = readFile(path.join(process.cwd(), ...asset.fsPath));
+  sceneSourceCache.set(mockupAssetId, promise);
+  return promise;
+}
 
 async function getDeviceRaster(
   deviceW: number,
   deviceH: number,
   mirrored: boolean,
+  mockupAssetId: MockupAssetId,
 ): Promise<DeviceRaster> {
-  const key = `${deviceW}x${deviceH}:${mirrored ? "m" : "n"}`;
+  const key = `${mockupAssetId}:${deviceW}x${deviceH}:${mirrored ? "m" : "n"}`;
   const existing = rasterCache.get(key);
   if (existing) return existing;
 
   const promise = (async () => {
-    const source = await loadDeviceSource();
+    const source = await loadDeviceSource(mockupAssetId);
     let pipe = sharp(source).resize(deviceW, deviceH, { fit: "fill" });
     if (mirrored) pipe = pipe.flop();
     const { data, info } = await pipe.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -67,7 +97,6 @@ async function getDeviceRaster(
   return promise;
 }
 
-/** Warp the screenshot into the screen quad, clipped to the device glass mask. */
 async function buildScreenFill(
   screenshot: Buffer,
   raster: DeviceRaster,
@@ -106,26 +135,62 @@ async function buildScreenFill(
   return sharp(out, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
+async function warpScreenshotToQuad(
+  screenshot: Buffer,
+  quad: PerspectiveQuad,
+  outW: number,
+  outH: number,
+): Promise<Buffer> {
+  const inv = homographyUnitSquareToQuadInverse(quad);
+  const out = Buffer.alloc(outW * outH * 4, 0);
+
+  if (!inv) {
+    return sharp(out, { raw: { width: outW, height: outH, channels: 4 } }).png().toBuffer();
+  }
+
+  const { data, info } = await sharp(screenshot)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const srcW = info.width;
+  const srcH = info.height;
+  const channels = info.channels;
+
+  for (let y = 0; y < outH; y += 1) {
+    for (let x = 0; x < outW; x += 1) {
+      const uv = homographyMapDestToSrc(inv, x + 0.5, y + 0.5);
+      if (!uv) continue;
+      const rgba = sampleBilinearPremultiplied(data, srcW, srcH, channels, uv.u, uv.v);
+      const idx = (y * outW + x) * 4;
+      out[idx] = rgba[0];
+      out[idx + 1] = rgba[1];
+      out[idx + 2] = rgba[2];
+      out[idx + 3] = rgba[3];
+    }
+  }
+  cleanWarpAlphaFringe(out, outW, outH);
+
+  return sharp(out, { raw: { width: outW, height: outH, channels: 4 } }).png().toBuffer();
+}
+
 export type AssetDeviceRender = {
   buffer: Buffer;
   width: number;
   height: number;
 };
 
-/**
- * Render the premium device (real titanium 3D frame) with the screenshot warped
- * into its perspective screen. Returns a deviceW×deviceH RGBA layer.
- */
 export async function renderAssetDeviceLayer(
   screenshot: Buffer,
   orientation: MockupOrientation,
   deviceW: number,
   deviceH: number,
+  mockupAssetId?: MockupAssetId | null,
 ): Promise<AssetDeviceRender> {
-  const mirrored = assetDeviceMirrored(orientation);
-  const raster = await getDeviceRaster(deviceW, deviceH, mirrored);
+  const assetId = getDeviceMockupAsset(mockupAssetId).id;
+  const mirrored = assetDeviceMirrored(orientation, assetId);
+  const raster = await getDeviceRaster(deviceW, deviceH, mirrored, assetId);
 
-  const quad = assetScreenQuad(orientation, raster.width, raster.height) as unknown as PerspectiveQuad;
+  const quad = assetScreenQuad(orientation, raster.width, raster.height, 0, 0, assetId) as unknown as PerspectiveQuad;
   const screenFill = await buildScreenFill(screenshot, raster, quad);
 
   const frame = await sharp(raster.data, {
@@ -150,4 +215,22 @@ export async function renderAssetDeviceLayer(
     .toBuffer();
 
   return { buffer, width: raster.width, height: raster.height };
+}
+
+/** Warp screenshot into a baked lifestyle scene mockup at canvas resolution. */
+export async function renderSceneMockupLayer(
+  sceneBackground: Buffer,
+  screenshot: Buffer,
+  asset: SceneMockupAsset,
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const quad = sceneScreenQuad(asset, width, height) as unknown as PerspectiveQuad;
+  const warped = await warpScreenshotToQuad(screenshot, quad, width, height);
+
+  return sharp(sceneBackground)
+    .resize(width, height, { fit: "cover", position: "centre" })
+    .composite([{ input: warped, top: 0, left: 0 }])
+    .png()
+    .toBuffer();
 }

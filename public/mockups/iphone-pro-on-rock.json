@@ -1,0 +1,55 @@
+{
+  "slug": "iphone-pro-on-rock",
+  "kind": "scene",
+  "label": "iphone pro on rock",
+  "src": "/mockups/iphone-pro-on-rock.png",
+  "fsPath": [
+    "public",
+    "mockups",
+    "iphone-pro-on-rock.png"
+  ],
+  "width": 1280,
+  "height": 2784,
+  "sourcePsd": "C:/Users/Alperen/Downloads/Free-iPhone-Pro-on-Rock-Mockup/Free iPhone Pro on Rock Mockup/Free iPhone Pro on Rock Mockup.psd",
+  "designLayer": "[YOUR DESIGN HERE]",
+  "screenQuad": {
+    "tl": {
+      "x": -160.4000000000001,
+      "y": 555.8720000000001
+    },
+    "tr": {
+      "x": 1440.4,
+      "y": 555.8720000000001
+    },
+    "br": {
+      "x": 1440.4,
+      "y": 2236.48
+    },
+    "bl": {
+      "x": -160.4000000000001,
+      "y": 2236.48
+    }
+  },
+  "screenQuadNorm": {
+    "tl": {
+      "x": -0.12531250000000008,
+      "y": 0.1996666666666667
+    },
+    "tr": {
+      "x": 1.1253125000000002,
+      "y": 0.1996666666666667
+    },
+    "br": {
+      "x": 1.1253125000000002,
+      "y": 0.8033333333333333
+    },
+    "bl": {
+      "x": -0.12531250000000008,
+      "y": 0.8033333333333333
+    }
+  },
+  "nativeSize": {
+    "width": 4500,
+    "height": 3000
+  }
+}

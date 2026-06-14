@@ -20,9 +20,9 @@ export type ReadabilityReport = {
   slideScores: SlideReadabilityScore[];
 };
 
-const HOOK_MAX_WORDS = 6;
-const DEFAULT_MAX_HEADLINE_WORDS = 10;
-const MAX_SUBHEADLINE_CHARS = 120;
+export const HOOK_MAX_WORDS = 6;
+export const DEFAULT_MAX_HEADLINE_WORDS = 8;
+export const MAX_SUBHEADLINE_CHARS = 120;
 
 function countWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean).length;
