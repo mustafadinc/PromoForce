@@ -1,3 +1,5 @@
+import { applyVisualPlan } from "@/lib/visualArtDirector/applyVisualPlan";
+import { mockupAssetForSlide, normalizeMockupAssetId } from "@/lib/assetMockup";
 import { normalizeMockupPose } from "@/lib/mockupPose";
 import { normalizeCaptionForSlide } from "@/lib/normalizeAsoCaption";
 import type { LocaleCode } from "@/lib/locales";
@@ -23,8 +25,11 @@ const beatOrder: StoreSlideBeat[] = [
   "download_cta",
 ];
 
-function getBeatForSlide(slideNumber: number): StoreSlideBeat {
-  return beatOrder[Math.min(Math.max(slideNumber - 1, 0), beatOrder.length - 1)];
+function getBeatForSlide(slideNumber: number, slideCount: number = 5): StoreSlideBeat {
+  if (slideNumber <= 1) return "hook";
+  if (slideNumber >= slideCount) return "download_cta";
+  if (slideNumber === 2) return "problem_outcome";
+  return (slideNumber % 2 === 1) ? "feature_benefit" : "social_proof";
 }
 
 const beatRationaleFallback: Record<StoreSlideBeat, string> = {
@@ -73,10 +78,12 @@ export function buildHybridBackgroundScenes(
   brandColor: string,
   styleAnchorSlide = 1,
 ): BackgroundScene[] {
+  const slideCount = profile.slideCount ?? 5;
   const lifestyle = buildFallbackBackgroundScenes(profile);
   const anchorScene =
     lifestyle.find((scene) => scene.sharedBySlides.includes(styleAnchorSlide)) ?? lifestyle[0];
-  const solidSlides = [1, 2, 3, 4, 5].filter((n) => n !== styleAnchorSlide);
+  const allSlides = Array.from({ length: slideCount }, (_, i) => i + 1);
+  const solidSlides = allSlides.filter((n) => n !== styleAnchorSlide);
   const solidBase = buildSolidBackgroundScene(profile, brandColor)[0];
 
   return [
@@ -98,6 +105,8 @@ export function buildHybridBackgroundScenes(
 }
 
 export function buildSolidBackgroundScene(profile: AppProfile, brandColor: string): BackgroundScene[] {
+  const slideCount = profile.slideCount ?? 5;
+  const allSlides = Array.from({ length: slideCount }, (_, i) => i + 1);
   return [
     {
       id: "solid-brand-set",
@@ -105,7 +114,7 @@ export function buildSolidBackgroundScene(profile: AppProfile, brandColor: strin
       treatment: "abstract_brand",
       sceneDescription: `Solid brand fill ${brandColor} for ${profile.appName} — same color on every slide (no AI lifestyle scene).`,
       reuseRationale: "Solid set mode — one color, maximum swipe consistency (ASO skill style).",
-      sharedBySlides: [1, 2, 3, 4, 5],
+      sharedBySlides: allSlides,
     },
   ];
 }
@@ -130,60 +139,123 @@ export function normalizeHeadlineFields(
 }
 
 export function buildFallbackBackgroundScenes(profile: AppProfile): BackgroundScene[] {
-  return [
-    {
-      id: "hero-brand-world",
-      label: "Neon brand hero",
-      treatment: "abstract_brand",
-      sceneDescription: `Dark cinematic space with glowing teal and blue neon arcs, soft particles, premium tech mood for ${profile.appName} — rich depth, NOT flat gray.`,
-      reuseRationale: "Slide 1 only — scroll-stopping brand energy.",
-      sharedBySlides: [1],
-    },
+  const slideCount = profile.slideCount ?? 5;
+  const scenes: BackgroundScene[] = [];
+
+  scenes.push({
+    id: "hero-brand-world",
+    label: "Neon brand hero",
+    treatment: "abstract_brand",
+    sceneDescription: `Dark cinematic space with glowing teal and blue neon arcs, soft particles, premium tech mood for ${profile.appName} — rich depth, NOT flat gray.`,
+    reuseRationale: "Slide 1 only — scroll-stopping brand energy.",
+    sharedBySlides: [1],
+  });
+
+  const templates: Array<{
+    id: string;
+    label: string;
+    treatment: BackgroundTreatment;
+    sceneDescription: string;
+    reuseRationale: string;
+  }> = [
     {
       id: "focus-lifestyle",
       label: "Deep work lifestyle",
       treatment: "lifestyle_with_person",
-      sceneDescription:
-        "Young professional at a calm desk with laptop, warm side light, shallow depth of field, focused mood — person visible from side or over-shoulder on the LEFT third of frame, no phone in hands. Moody navy room with teal rim light. Center-right stays open for device overlay.",
-      reuseRationale: "Slide 2 — emotional problem/outcome beat with its own photoshoot.",
-      sharedBySlides: [2],
+      sceneDescription: "Young professional at a calm desk with laptop, warm side light, shallow depth of field, focused mood — person visible from side or over-shoulder on the LEFT third of frame, no phone in hands. Moody navy room with teal rim light. Center-right stays open for device overlay.",
+      reuseRationale: "Slide 2 — emotional problem/outcome beat.",
     },
     {
       id: "feature-environment",
       label: "Feature workspace",
       treatment: "lifestyle_environment",
-      sceneDescription:
-        "Organized desk with plants, notebook, soft morning window light, teal accent glow on props — NO people, detailed textures, cinematic depth.",
-      reuseRationale: "Slide 3 — distinct feature-benefit environment (not reused from slide 2).",
-      sharedBySlides: [3],
+      sceneDescription: "Organized desk with plants, notebook, soft morning window light, teal accent glow on props — NO people, detailed textures, cinematic depth.",
+      reuseRationale: "Slide 3 — distinct feature-benefit environment.",
     },
     {
       id: "confidence-environment",
       label: "Calm proof scene",
       treatment: "lifestyle_environment",
-      sceneDescription:
-        "Serene study nook or morning routine corner — NO people, soft natural light, wood textures, subtle brand teal accent glow.",
-      reuseRationale: "Slide 4 — calmer proof mood, unique from prior slides.",
-      sharedBySlides: [4],
+      sceneDescription: "Serene study nook or morning routine corner — NO people, soft natural light, wood textures, subtle brand teal accent glow.",
+      reuseRationale: "Slide 4 — calmer proof mood.",
     },
     {
+      id: "alternate-lifestyle",
+      label: "Productive setup",
+      treatment: "lifestyle_with_person",
+      sceneDescription: "Creative builder working in a bright airy studio, side-view showing workspace organization, soft background details with plants and natural afternoon sun.",
+      reuseRationale: "Slide 5 — alternate lifestyle scene.",
+    },
+    {
+      id: "alternate-environment-1",
+      label: "Sleek office",
+      treatment: "lifestyle_environment",
+      sceneDescription: "Minimalist desktop workspace with a dark wood desk, modern desk lamp casting warm directional light, neat coffee mug, soft out-of-focus background textures.",
+      reuseRationale: "Slide 6 — alternate workspace environment.",
+    },
+    {
+      id: "alternate-environment-2",
+      label: "Serene morning",
+      treatment: "lifestyle_environment",
+      sceneDescription: "Morning bedroom table next to a window with soft light, green potted plant casting gentle shadows, warm cozy morning tone.",
+      reuseRationale: "Slide 7 — alternate environment scene.",
+    },
+    {
+      id: "alternate-lifestyle-2",
+      label: "Mobile productivity",
+      treatment: "lifestyle_with_person",
+      sceneDescription: "Person in a modern coffee shop environment, warm natural lighting, shallow depth of field showing a cozy warm background vibe.",
+      reuseRationale: "Slide 8 — alternate lifestyle scene with person.",
+    },
+    {
+      id: "alternate-environment-3",
+      label: "Creative studio",
+      treatment: "lifestyle_environment",
+      sceneDescription: "Bright artist studio setting, colorful accent details, rich textures and modern desk organizer under soft diffuse lighting.",
+      reuseRationale: "Slide 9 — alternate creative environment.",
+    },
+  ];
+
+  for (let i = 2; i < slideCount; i++) {
+    const template = templates[(i - 2) % templates.length]!;
+    scenes.push({
+      id: template.id,
+      label: template.label,
+      treatment: template.treatment,
+      sceneDescription: template.sceneDescription,
+      reuseRationale: template.reuseRationale,
+      sharedBySlides: [i],
+    });
+  }
+
+  if (slideCount > 1) {
+    scenes.push({
       id: "cta-brand-finale",
       label: "CTA brand finale",
       treatment: "cta_brand",
       sceneDescription: `Bold cinematic brand atmosphere for ${profile.appName} — deep navy-to-teal gradient depth, soft light rays, energy particles. NOT flat gray or empty studio.`,
-      reuseRationale: "Slide 5 — unique CTA closing mood.",
-      sharedBySlides: [5],
-    },
-  ];
+      reuseRationale: `Slide ${slideCount} — unique CTA closing mood.`,
+      sharedBySlides: [slideCount],
+    });
+  }
+
+  return scenes;
 }
 
-function defaultSceneIdForSlide(slideNumber: number): string | null {
+function defaultSceneIdForSlide(slideNumber: number, slideCount: number = 5): string | null {
   if (slideNumber === 1) return "hero-brand-world";
-  if (slideNumber === 2) return "focus-lifestyle";
-  if (slideNumber === 3) return "feature-environment";
-  if (slideNumber === 4) return "confidence-environment";
-  if (slideNumber === 5) return "cta-brand-finale";
-  return null;
+  if (slideNumber >= slideCount) return "cta-brand-finale";
+  const ids = [
+    "focus-lifestyle",
+    "feature-environment",
+    "confidence-environment",
+    "alternate-lifestyle",
+    "alternate-environment-1",
+    "alternate-environment-2",
+    "alternate-lifestyle-2",
+    "alternate-environment-3"
+  ];
+  return ids[(slideNumber - 2) % ids.length] ?? null;
 }
 
 /** Split AI scenes that share 3+ slides so each slide gets a distinct background. */
@@ -232,7 +304,7 @@ export function normalizeBackgroundScenes(
     return fallback;
   }
 
-  const scenes = raw.slice(0, 8).map((scene, index) => {
+  const scenes = raw.slice(0, Math.max(15, fallback.length)).map((scene, index) => {
     const fb = fallback[index] || fallback[fallback.length - 1];
     const treatment =
       scene.treatment === "lifestyle_with_person" ||
@@ -273,7 +345,8 @@ export function normalizeSlideCreativeFields(
   | "showAppBranding"
   | "backgroundRationale"
 > {
-  const beat = getBeatForSlide(slideNumber);
+  const slideCount = profile.slideCount ?? 5;
+  const beat = getBeatForSlide(slideNumber, slideCount);
   const defaults = beatDefaults[beat];
 
   let backgroundTreatment: BackgroundTreatment =
@@ -287,12 +360,12 @@ export function normalizeSlideCreativeFields(
         : defaults.treatment;
 
   let backgroundSceneId =
-    typeof slide.backgroundSceneId === "string" ? slide.backgroundSceneId.trim() : defaultSceneIdForSlide(slideNumber);
+    typeof slide.backgroundSceneId === "string" ? slide.backgroundSceneId.trim() : defaultSceneIdForSlide(slideNumber, slideCount);
 
   if (backgroundSceneId) {
     const exists = scenes.some((scene) => scene.id === backgroundSceneId);
     if (!exists) {
-      backgroundSceneId = defaultSceneIdForSlide(slideNumber);
+      backgroundSceneId = defaultSceneIdForSlide(slideNumber, slideCount);
     }
   }
 
@@ -390,6 +463,13 @@ export function applyCreativeDirectorDefaults(
         ? undefined
         : normalizeMockupPose(slide.mockupPose, slideNumber);
 
+    const mockupAssetId =
+      slide.screenshotUsage === "none"
+        ? undefined
+        : slide.mockupAssetId
+          ? normalizeMockupAssetId(slide.mockupAssetId)
+          : mockupAssetForSlide(slideNumber);
+
     return {
       ...slide,
       slideNumber,
@@ -397,6 +477,7 @@ export function applyCreativeDirectorDefaults(
       ...headlines,
       backgroundSceneId: sceneId,
       mockupPose,
+      mockupAssetId,
       ...(useSolid
         ? {
             backgroundTreatment: "abstract_brand" as const,
@@ -411,7 +492,7 @@ export function applyCreativeDirectorDefaults(
 
   const syncedScenes = syncBackgroundSceneSlideMap(backgroundScenes, slides);
 
-  return {
+  const withSlides: StrategyBrief = {
     ...brief,
     setMode,
     brandColor,
@@ -421,6 +502,8 @@ export function applyCreativeDirectorDefaults(
     backgroundScenes: syncedScenes,
     slides,
   };
+
+  return applyVisualPlan(withSlides, profile);
 }
 
 export function summarizeCreativePlan(strategy: StrategyBrief): string {

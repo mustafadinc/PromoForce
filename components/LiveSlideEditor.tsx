@@ -54,7 +54,9 @@ import {
   type MockupFrameColor,
 } from "@/lib/mockupFrameColors";
 import { normalizeMockupPose } from "@/lib/mockupPose";
-import { DEFAULT_MOCKUP_ASSET_ID, normalizeMockupAssetId } from "@/lib/assetMockup";
+import { DEFAULT_MOCKUP_ASSET_ID, getRenderableSceneMockupAsset, isSceneMockup, normalizeMockupAssetId } from "@/lib/assetMockup";
+import { drawSceneMockupPreview } from "@/lib/previewSceneMockup";
+import { computeSceneMockupPlacement } from "@/lib/sceneMockupPlacement";
 
 const CANVAS_W = APP_STORE_GENERATION_WIDTH;
 const CANVAS_H = APP_STORE_GENERATION_HEIGHT;
@@ -175,6 +177,7 @@ export function LiveSlideEditor({
   const [displayScale, setDisplayScale] = useState(0.35);
   const [ready, setReady] = useState(false);
   const [deviceImage, setDeviceImage] = useState<HTMLCanvasElement | null>(null);
+  const [sceneMockupImage, setSceneMockupImage] = useState<HTMLCanvasElement | null>(null);
   const [deviceBaseH, setDeviceBaseH] = useState(Math.round(BASE_DEVICE_RENDER_WIDTH * 2.05));
   const [snapGuideX, setSnapGuideX] = useState<number | null>(null);
   const [snapGuideY, setSnapGuideY] = useState<number | null>(null);
@@ -185,6 +188,8 @@ export function LiveSlideEditor({
   const mockupAssetId = normalizeMockupAssetId(
     slide.mockupAssetId ?? slidePlan.mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID,
   );
+  const usesSceneTemplate = isSceneMockup(mockupAssetId);
+  const sceneMockupAsset = getRenderableSceneMockupAsset(mockupAssetId, slide.slideNumber);
 
   const initialTextLayer = useMemo(
     () =>
@@ -256,8 +261,23 @@ export function LiveSlideEditor({
 
   const frameColor = normalizeMockupFrameColor(editorState.device.frameColor) as MockupFrameColor;
   const customHex = frameColor.startsWith("#") ? frameColor : null;
-  const showDevice = Boolean(screenshotUrl) && slidePlan.asoBeat !== "download_cta";
-  const fontFamily = editorFontFamily(locale);
+  const showDevice =
+    Boolean(screenshotUrl) && slidePlan.asoBeat !== "download_cta" && !usesSceneTemplate;
+  const showSceneDevice =
+    Boolean(screenshotUrl) && slidePlan.asoBeat !== "download_cta" && Boolean(sceneMockupAsset);
+  const fontFamily = strategy?.fontFamily || editorFontFamily(locale);
+  const sceneMockupPlacement = useMemo(
+    () =>
+      sceneMockupAsset
+        ? computeSceneMockupPlacement({
+            canvasW: CANVAS_W,
+            canvasH: CANVAS_H,
+            asset: sceneMockupAsset,
+            textBlockBottom: textLayer.textBlockBottom,
+          })
+        : null,
+    [sceneMockupAsset, textLayer.textBlockBottom],
+  );
 
   const pillsOffsetX = editorState.overlays?.pillsOffsetX ?? 0;
   const pillsOffsetY = editorState.overlays?.pillsOffsetY ?? 0;
@@ -288,13 +308,13 @@ export function LiveSlideEditor({
 
   useEffect(() => {
     let cancelled = false;
-    void loadEditorFonts(locale).then(() => {
+    void loadEditorFonts(locale, strategy?.fontFamily).then(() => {
       if (!cancelled) setReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [locale]);
+  }, [locale, strategy?.fontFamily]);
 
   useEffect(() => {
     if (!screenshotUrl || !showDevice) {
@@ -316,6 +336,33 @@ export function LiveSlideEditor({
       cancelled = true;
     };
   }, [screenshotUrl, showDevice, mockupPose, frameColor, editorState.device.mockupAssetId, mockupAssetId]);
+
+  useEffect(() => {
+    if (!screenshotUrl || !showSceneDevice || !sceneMockupAsset) {
+      setSceneMockupImage(null);
+      return;
+    }
+
+    let cancelled = false;
+    const canvas = document.createElement("canvas");
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      setSceneMockupImage(null);
+      return;
+    }
+
+    void drawSceneMockupPreview(ctx, screenshotUrl, sceneMockupAsset, CANVAS_W, CANVAS_H, {
+      transparentBackground: true,
+    }).then(() => {
+      if (!cancelled) setSceneMockupImage(canvas);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [screenshotUrl, showSceneDevice, sceneMockupAsset]);
 
   useEffect(() => {
     if (
@@ -653,6 +700,20 @@ export function LiveSlideEditor({
                           shadowOffsetY={12}
                         />
                       </Group>
+                    ) : null}
+
+                    {showSceneDevice &&
+                    sceneMockupImage &&
+                    sceneMockupPlacement &&
+                    !isLayerHidden(hiddenLayers, "device") ? (
+                      <KonvaImage
+                        image={sceneMockupImage}
+                        x={sceneMockupPlacement.left}
+                        y={sceneMockupPlacement.top}
+                        width={sceneMockupPlacement.width}
+                        height={sceneMockupPlacement.height}
+                        listening={false}
+                      />
                     ) : null}
 
                     {overlayLayers.featurePills && !isLayerHidden(hiddenLayers, "featurePills") ? (
@@ -1142,6 +1203,18 @@ export function LiveSlideEditor({
                 >
                   Reset mockup position
                 </button>
+              </section>
+            ) : null}
+
+            {showSceneDevice && !isLayerHidden(hiddenLayers, "device") ? (
+              <section className="pf-live-editor-section">
+                <div className="pf-text-block-header">
+                  <span className="field-label">Mockup</span>
+                  <HideLayerButton layer="device" />
+                </div>
+                <p className="pf-live-editor-hint">
+                  Scene mockup uses the baked template angle and is positioned automatically below the text.
+                </p>
               </section>
             ) : null}
 

@@ -48,9 +48,11 @@ import {
   assetScreenQuad,
   computeAssetDevicePlacement,
   getSceneMockupAsset,
+  getRenderableSceneMockupAsset,
   usesAssetMockup,
   type MockupAssetId,
 } from "@/lib/assetMockup";
+import { computeSceneMockupPlacement } from "@/lib/sceneMockupPlacement";
 import { renderAssetDeviceLayer, renderSceneMockupLayer } from "@/lib/renderAssetDevice";
 
 export { parseImageSize };
@@ -107,11 +109,13 @@ type CompositeMarketingSlideInput = {
   mockupPose?: MockupPose;
   mockupAssetId?: MockupAssetId;
   slideNumber?: number;
+  phoneHeightRatio?: number;
   locale?: LocaleCode;
   socialProof?: SocialProofInput;
   showSocialProof?: boolean;
   omitSubheadline?: boolean;
   asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
+  fontFamily?: string;
 };
 
 type PhoneLayout = {
@@ -260,6 +264,7 @@ function getPhoneLayout(
   profile: CompositeLayoutProfile,
   mockupPose: MockupPose,
   mockupAssetId?: MockupAssetId | null,
+  phoneHeightRatio?: number,
 ): PhoneLayout {
   const layoutPose = resolveLayoutMockupPose(mockupPose);
   if (usesAssetMockup(layoutPose.orientation, mockupAssetId)) {
@@ -405,7 +410,7 @@ function renderGradientLine(
   fontWeight: number,
   textAnchor: "middle" | "start",
 ): string {
-  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="url(#accentGrad)"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="url(#accentGrad)" letter-spacing="-3"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
 }
 
 function renderAccentInLine(
@@ -419,19 +424,19 @@ function renderAccentInLine(
 ): string {
   const trimmedAccent = accentPhrase.trim();
   if (!trimmedAccent) {
-    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="-2"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const idx = line.toLowerCase().indexOf(trimmedAccent.toLowerCase());
   if (idx === -1) {
-    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="-2"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const before = line.slice(0, idx);
   const accent = line.slice(idx, idx + trimmedAccent.length);
   const after = line.slice(idx + trimmedAccent.length);
 
-  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}">
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" letter-spacing="-2">
     <tspan x="${anchorX}" y="${y}" fill="#ffffff">${escapeXml(before)}</tspan><tspan fill="url(#accentGrad)">${escapeXml(accent)}</tspan><tspan fill="#ffffff">${escapeXml(after)}</tspan>
   </text>`;
 }
@@ -561,6 +566,8 @@ async function buildTextOverlaySvg(input: {
   showSocialProof?: boolean;
   omitSubheadline?: boolean;
   asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
+  maxTextBlockHeightRatio?: number;
+  fontFamily?: string;
 }) {
   const {
     headline,
@@ -582,12 +589,14 @@ async function buildTextOverlaySvg(input: {
     showSocialProof = false,
     omitSubheadline = false,
     asoBeat,
+    maxTextBlockHeightRatio,
+    fontFamily: customFont,
   } = input;
 
   const scale = canvasScale(width, height);
   const profile = getCompositeLayoutProfile(width, height);
-  const fontFamily = getSvgFontFamily(locale);
-  const fontFaceDef = await getAsoFontFaceSvgDef(locale);
+  const fontFamily = getSvgFontFamily(locale, customFont);
+  const fontFaceDef = await getAsoFontFaceSvgDef(locale, customFont);
   const useBranding = Boolean(showAppBranding && appName && !isCta && profile.format === "app_store");
   const effectiveSubheadline = omitSubheadline ? "" : subheadline;
   const layout = computeAsoTextLayout(
@@ -601,6 +610,7 @@ async function buildTextOverlaySvg(input: {
     lockedTypography,
     useBranding,
     locale,
+    maxTextBlockHeightRatio,
   );
 
   const usePills =
@@ -625,6 +635,10 @@ async function buildTextOverlaySvg(input: {
       return el;
     })
     .join("");
+
+  if (layout.verbLines.length && layout.descriptorLines.length) {
+    y += Math.round(layout.descriptorSize * 0.38);
+  }
 
   const descriptorAccent =
     headlineAccent.trim() ||
@@ -697,7 +711,7 @@ async function buildTextOverlaySvg(input: {
   ${verbElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   ${descriptorElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   </g>
-  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${fontFamily}" font-weight="700" font-size="${layout.subSize}" fill="${accentColor}" opacity="0.78">${subTspans}</text>
+  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${fontFamily}" font-weight="700" font-size="${layout.subSize}" fill="#f1f5f9" opacity="0.95">${subTspans}</text>
   ${featurePills.markup.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   ${socialProofMarkup}
 </svg>`),
@@ -849,6 +863,45 @@ async function compositeDeviceFrame(
   return sharp(base).composite([{ input: phoneStack, top: 0, left: 0 }]).png().toBuffer();
 }
 
+async function compositeSceneMockupFrame(
+  base: Buffer,
+  screenshot: Buffer,
+  sceneAsset: NonNullable<ReturnType<typeof getRenderableSceneMockupAsset>>,
+  width: number,
+  height: number,
+  textBlockBottom: number,
+) {
+  const transparent = await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .png()
+    .toBuffer();
+
+  const sceneLayer = await renderSceneMockupLayer(
+    transparent,
+    screenshot,
+    sceneAsset,
+    width,
+    height,
+  );
+  const placement = computeSceneMockupPlacement({
+    canvasW: width,
+    canvasH: height,
+    asset: sceneAsset,
+    textBlockBottom,
+  });
+
+  return sharp(base)
+    .composite([{ input: sceneLayer, top: placement.top, left: placement.left }])
+    .png()
+    .toBuffer();
+}
+
 export async function compositeMarketingSlide({
   background,
   screenshot,
@@ -870,14 +923,17 @@ export async function compositeMarketingSlide({
   mockupPose: rawMockupPose,
   mockupAssetId,
   slideNumber,
+  phoneHeightRatio,
   locale,
   socialProof,
   showSocialProof = false,
   omitSubheadline = false,
   asoBeat,
+  fontFamily,
 }: CompositeMarketingSlideInput): Promise<Buffer> {
   let mockupPose = resolveCompositeMockupPose(rawMockupPose, slideNumber);
   const profile = getCompositeLayoutProfile(width, height);
+  const sceneAsset = getRenderableSceneMockupAsset(mockupAssetId, slideNumber);
   const hasPills =
     profile.showFeaturePills &&
     asoBeat === "hook" &&
@@ -908,6 +964,7 @@ export async function compositeMarketingSlide({
     showSocialProof,
     omitSubheadline,
     asoBeat,
+    fontFamily,
   });
 
   const textOverlay = await sharp(textOverlaySvg).png().toBuffer();
@@ -923,9 +980,15 @@ export async function compositeMarketingSlide({
       .toBuffer();
   }
 
-  const sceneAsset = getSceneMockupAsset(mockupAssetId);
   if (sceneAsset) {
-    const withScreen = await renderSceneMockupLayer(base, screenshot, sceneAsset, width, height);
+    const withScreen = await compositeSceneMockupFrame(
+      base,
+      screenshot,
+      sceneAsset,
+      width,
+      height,
+      textBlockBottom,
+    );
     return sharp(withScreen)
       .composite([{ input: textOverlay, top: 0, left: 0 }])
       .png()
@@ -938,7 +1001,7 @@ export async function compositeMarketingSlide({
   }
 
   const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose, mockupAssetId);
+  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose, mockupAssetId, phoneHeightRatio);
   const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
   const withDevice = await compositeDeviceFrame(
     base,
@@ -955,4 +1018,76 @@ export async function compositeMarketingSlide({
     .composite([{ input: textOverlay, top: 0, left: 0 }])
     .png()
     .toBuffer();
+}
+
+export type CompositeMockupOnlyInput = {
+  screenshot: Buffer;
+  width: number;
+  height: number;
+  accentColor?: string;
+  mockupColor?: string;
+  mockupPose?: MockupPose;
+  mockupAssetId?: MockupAssetId;
+  slideNumber?: number;
+  phoneHeightRatio?: number;
+};
+
+/** Transparent PNG — device mockup + warped screenshot only (no AI background or headline). */
+export async function compositeMockupOnlySlide({
+  screenshot,
+  width,
+  height,
+  accentColor = DEFAULT_ACCENT_COLOR,
+  mockupColor,
+  mockupPose: rawMockupPose,
+  mockupAssetId,
+  slideNumber,
+  phoneHeightRatio,
+}: CompositeMockupOnlyInput): Promise<Buffer> {
+  const transparent = await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .png()
+    .toBuffer();
+
+  const sceneAsset = getRenderableSceneMockupAsset(mockupAssetId, slideNumber);
+  if (sceneAsset) {
+    return renderSceneMockupLayer(transparent, screenshot, sceneAsset, width, height);
+  }
+
+  let mockupPose = resolveCompositeMockupPose(rawMockupPose, slideNumber);
+  if (mockupPose.placement === "auto") {
+    mockupPose = { ...mockupPose, placement: "center" };
+  }
+
+  const profile = getCompositeLayoutProfile(width, height);
+  const textBlockBottom = Math.round(height * profile.maxTextBlockHeightRatio);
+  const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
+  const layout = getPhoneLayout(
+    width,
+    height,
+    textBlockBottom,
+    0,
+    profile,
+    mockupPose,
+    mockupAssetId,
+    phoneHeightRatio,
+  );
+  const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
+
+  return compositeDeviceFrame(
+    transparent,
+    layout,
+    screenBuffer,
+    width,
+    height,
+    accentColor,
+    mockupColor,
+    mockupAssetId,
+  );
 }

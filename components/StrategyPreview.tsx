@@ -549,6 +549,29 @@ export function StrategyPreview({
           />
         </label>
         <label className="strategy-card field">
+          <span>Font Family</span>
+          <select
+            value={strategy.fontFamily || "Inter"}
+            onChange={(event) => onStrategyChange({ ...strategy, fontFamily: event.target.value })}
+            disabled={isGenerating}
+          >
+            {[
+              "Inter",
+              "Roboto",
+              "Montserrat",
+              "Oswald",
+              "Playfair Display",
+              "Poppins",
+              "Outfit",
+              "Caveat"
+            ].map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="strategy-card field">
           <span>Design System (cohesion)</span>
           <textarea
             rows={2}

@@ -7,46 +7,43 @@ import {
 /** Metallic iPhone 17 Pro frame — shared by UI preview and export composite. */
 
 export const METALLIC_FRAME_W = 430;
-export const METALLIC_FRAME_H = 880;
+export const METALLIC_FRAME_H = 900;
 
 /** Outer shell corner radius in design coordinates (matches frame SVG). */
 export const METALLIC_OUTER_RADIUS = 48;
 
-/** Bottom inner edge of the screen hole in design coordinates. */
-const METALLIC_SCREEN_BOTTOM = 875;
-
 export const METALLIC_SCREEN = {
-  x: 5,
-  y: 3,
-  w: 420,
-  h: METALLIC_SCREEN_BOTTOM - 3,
-  r: 45,
+  x: 15,
+  y: 15,
+  w: 400,
+  h: 870,
+  r: 33,
 } as const;
 
 /** Horizontal overscan — equal bleed keeps side gaps balanced. */
-export const METALLIC_SCREEN_CONTENT_BLEED_LEFT = 6;
-export const METALLIC_SCREEN_CONTENT_BLEED_RIGHT = 6;
+export const METALLIC_SCREEN_CONTENT_BLEED_LEFT = 4;
+export const METALLIC_SCREEN_CONTENT_BLEED_RIGHT = 4;
 
 /** Fine horizontal centering tweak (positive = right, negative = left). */
-export const METALLIC_SCREEN_CONTENT_SHIFT_X = -3;
+export const METALLIC_SCREEN_CONTENT_SHIFT_X = -2;
 
 /** Horizontal nudge in contain mode. */
 export const METALLIC_SCREEN_OBJECT_SHIFT_X = 0;
 
 /** Side inset — keeps screenshot corners inside rounded screen hole. */
-export const METALLIC_SCREEN_CONTENT_INSET_SIDE = 2;
+export const METALLIC_SCREEN_CONTENT_INSET_SIDE = 1;
 
 /** Slight shrink so square screenshot corners don't peek past frame radius. */
-export const METALLIC_SCREEN_CONTAIN_SCALE = 0.988;
+export const METALLIC_SCREEN_CONTAIN_SCALE = 0.99;
 
 /** Vertical crop anchor when width-fit fallback is required. */
 export const METALLIC_SCREEN_OBJECT_ANCHOR_Y = 0.5;
 
 /** Bump when mockup fit math changes — export recompositing picks this up. */
-export const MOCKUP_SCREEN_FIT_VERSION = 14;
+export const MOCKUP_SCREEN_FIT_VERSION = 15;
 
 /** Inset from top inner bezel / Dynamic Island — room above status bar. */
-export const METALLIC_SCREEN_CONTENT_OFFSET_Y = 8;
+export const METALLIC_SCREEN_CONTENT_OFFSET_Y = 6;
 
 /** Inset from bottom inner bezel — small gap under tab bar. */
 export const METALLIC_SCREEN_CONTENT_INSET_BOTTOM = 2;
@@ -108,29 +105,31 @@ type MetallicFrameSvgOptions = {
 function defaultTitaniumGradients(id: string) {
   return {
     titanium: `<linearGradient id="${id}-titanium" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#f8f8fa"/>
-      <stop offset="6%" stop-color="#e8e8ec"/>
-      <stop offset="18%" stop-color="#b0b0b8"/>
-      <stop offset="32%" stop-color="#787880"/>
-      <stop offset="46%" stop-color="#505058"/>
-      <stop offset="54%" stop-color="#3a3a40"/>
-      <stop offset="66%" stop-color="#707078"/>
-      <stop offset="80%" stop-color="#b8b8c0"/>
-      <stop offset="92%" stop-color="#e0e0e6"/>
-      <stop offset="100%" stop-color="#fafafa"/>
+      <stop offset="0%" stop-color="#f4f4f6"/>
+      <stop offset="5%" stop-color="#e2e2e6"/>
+      <stop offset="15%" stop-color="#a8a8b0"/>
+      <stop offset="30%" stop-color="#7a7a82"/>
+      <stop offset="45%" stop-color="#5a5a60"/>
+      <stop offset="55%" stop-color="#404044"/>
+      <stop offset="65%" stop-color="#606066"/>
+      <stop offset="80%" stop-color="#aaaaaf"/>
+      <stop offset="92%" stop-color="#c4c4ca"/>
+      <stop offset="100%" stop-color="#ebebec"/>
     </linearGradient>`,
     edgeShine: `<linearGradient id="${id}-edge-shine" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
-      <stop offset="8%" stop-color="#ffffff" stop-opacity="0.12"/>
-      <stop offset="50%" stop-color="#000000" stop-opacity="0.08"/>
-      <stop offset="92%" stop-color="#000000" stop-opacity="0.15"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="6%" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0.15"/>
+      <stop offset="94%" stop-color="#000000" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.45"/>
     </linearGradient>`,
     btn: `<linearGradient id="${id}-btn" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ececf0"/>
-      <stop offset="40%" stop-color="#909098"/>
-      <stop offset="100%" stop-color="#585860"/>
+      <stop offset="0%" stop-color="#d0d0d6"/>
+      <stop offset="40%" stop-color="#76767e"/>
+      <stop offset="100%" stop-color="#46464a"/>
     </linearGradient>`,
+    mid: "#8a8a92",
+    deep: "#303033",
   };
 }
 
@@ -149,32 +148,78 @@ export function generateMetallicIPhoneFrameSvg(options: MetallicFrameSvgOptions 
 
   const shadowRef = options.includeShadow ? ` filter="url(#${id}-shadow)"` : "";
 
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${METALLIC_FRAME_W} ${METALLIC_FRAME_H}" xmlns="http://www.w3.org/2000/svg">
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${METALLIC_FRAME_W} ${METALLIC_FRAME_H}" style="overflow: visible;" xmlns="http://www.w3.org/2000/svg">
   <defs>
     ${shadow}
     ${gradients.titanium}
     ${gradients.edgeShine}
     ${gradients.btn}
+    <linearGradient id="${id}-btn-dark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#444"/>
+      <stop offset="50%" stop-color="#111"/>
+      <stop offset="100%" stop-color="#333"/>
+    </linearGradient>
   </defs>
   <g${shadowRef}>
+    <!-- Left Buttons -->
+    <rect x="-2" y="180" width="4" height="30" rx="1.5" fill="url(#${id}-btn)"/>
+    <rect x="-2" y="240" width="4" height="60" rx="1.5" fill="url(#${id}-btn)"/>
+    <rect x="-2" y="320" width="4" height="60" rx="1.5" fill="url(#${id}-btn)"/>
+    
+    <!-- Right Buttons -->
+    <rect x="428" y="260" width="4" height="90" rx="1.5" fill="url(#${id}-btn)"/>
+    <rect x="428" y="560" width="2" height="70" rx="1" fill="url(#${id}-btn-dark)"/>
+
+    <!-- Titanium Frame Outer -->
     <path fill="url(#${id}-titanium)" fill-rule="evenodd" d="
-      M 48 0 H 382 Q 430 0 430 48 V 832 Q 430 880 382 880 H 48 Q 0 880 0 832 V 48 Q 0 0 48 0 Z
-      M 50 3 H 380 Q 425 3 425 48 V 830 Q 425 875 380 875 H 50 Q 5 875 5 830 V 48 Q 5 3 50 3 Z
+      M 48 0 H 382 Q 430 0 430 48 V 852 Q 430 900 382 900 H 48 Q 0 900 0 852 V 48 Q 0 0 48 0 Z
+      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
     "/>
-    <path fill="url(#${id}-edge-shine)" fill-rule="evenodd" opacity="0.5" d="
-      M 48 0 H 382 Q 430 0 430 48 V 832 Q 430 880 382 880 H 48 Q 0 880 0 832 V 48 Q 0 0 48 0 Z
-      M 50 3 H 380 Q 425 3 425 48 V 830 Q 425 875 380 875 H 50 Q 5 875 5 830 V 48 Q 5 3 50 3 Z
+    <path fill="url(#${id}-edge-shine)" fill-rule="evenodd" d="
+      M 48 0 H 382 Q 430 0 430 48 V 852 Q 430 900 382 900 H 48 Q 0 900 0 852 V 48 Q 0 0 48 0 Z
+      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
     "/>
-    <rect x="158" y="1" width="114" height="1" rx="0.5" fill="rgba(0,0,0,0.25)"/>
-    <rect x="158" y="876" width="114" height="1" rx="0.5" fill="rgba(0,0,0,0.25)"/>
-    <rect x="152" y="16" width="126" height="34" rx="17" fill="#000"/>
-    <rect x="152" y="16" width="126" height="34" rx="17" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.75"/>
-    <circle cx="256" cy="33" r="6" fill="#1c1c1e" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
-    <circle cx="256" cy="33" r="2.5" fill="#08080a"/>
-    <rect x="0" y="252" width="3" height="58" rx="1.5" fill="url(#${id}-btn)"/>
-    <rect x="0" y="334" width="3" height="32" rx="1.5" fill="url(#${id}-btn)"/>
-    <rect x="0" y="378" width="3" height="32" rx="1.5" fill="url(#${id}-btn)"/>
-    <rect x="427" y="322" width="3" height="48" rx="1.5" fill="url(#${id}-btn)"/>
+
+    <!-- Antenna Bands -->
+    <rect x="100" y="0" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="326" y="0" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="100" y="897" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="326" y="897" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="0" y="150" width="3" height="4" fill="#222" opacity="0.6"/>
+    <rect x="0" y="750" width="3" height="4" fill="#222" opacity="0.6"/>
+    <rect x="427" y="150" width="3" height="4" fill="#222" opacity="0.6"/>
+    <rect x="427" y="750" width="3" height="4" fill="#222" opacity="0.6"/>
+
+    <!-- Black Glass Bezel -->
+    <path fill="#050505" fill-rule="evenodd" d="
+      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
+      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+    "/>
+    
+    <!-- Screen Inner Edge Highlights (Depth) -->
+    <path fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5" d="
+      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+    "/>
+    <path fill="none" stroke="#000" stroke-width="3" d="
+      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+    " opacity="0.5" style="transform: translate(0, 1px)"/>
+
+    <!-- Dynamic Island -->
+    <g transform="translate(152, 26)">
+      <rect x="0" y="0" width="126" height="36" rx="18" fill="#000"/>
+      <!-- Face ID module -->
+      <circle cx="18" cy="18" r="7" fill="#1c1c1e" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+      <circle cx="18" cy="18" r="3" fill="#08080a"/>
+      <!-- Front Camera -->
+      <circle cx="108" cy="18" r="8" fill="#0a0a0c" stroke="rgba(255,255,255,0.03)" stroke-width="0.5"/>
+      <circle cx="108" cy="18" r="4" fill="#030304"/>
+      <!-- Lens reflection -->
+      <circle cx="109" cy="16" r="1.5" fill="rgba(255,255,255,0.15)"/>
+    </g>
+    
+    <!-- Top Ear Speaker Grill -->
+    <rect x="180" y="4" width="70" height="2" rx="1" fill="#000"/>
+    <rect x="180" y="4" width="70" height="2" rx="1" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
   </g>
 </svg>`;
 }

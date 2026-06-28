@@ -30,6 +30,7 @@ import {
   formatScreenshotIntelligenceForPrompt,
 } from "@/lib/screenshotIntelligenceFormat";
 import { normalizeMockupPose } from "@/lib/mockupPose";
+import { mockupAssetForSlide, normalizeMockupAssetId } from "@/lib/assetMockup";
 import { alignStoreStrategyToIntelligence } from "@/lib/syncSlideToScreenshot";
 import { DEFAULT_LOCALE, getLocaleDefinition, localeExpertPrompt, type LocaleCode } from "@/lib/locales";
 
@@ -117,6 +118,12 @@ function normalizeSlide(
       screenshotUsage === "none"
         ? undefined
         : normalizeMockupPose(raw.mockupPose, slideNumber),
+    mockupAssetId:
+      screenshotUsage === "none"
+        ? undefined
+        : raw.mockupAssetId
+          ? normalizeMockupAssetId(raw.mockupAssetId)
+          : mockupAssetForSlide(slideNumber),
   };
 }
 
@@ -173,11 +180,12 @@ function normalizeStrategyBrief(
   screenshotCount: number,
   locale: LocaleCode = DEFAULT_LOCALE,
 ): StrategyBrief {
+  const slideCount = profile.slideCount ?? 5;
   const fallback = buildFallbackStoreStrategy(profile, screenshotCount);
-  const slides = Array.isArray(raw.slides) ? raw.slides.slice(0, STORE_SLIDE_COUNT) : [];
+  const slides = Array.isArray(raw.slides) ? raw.slides.slice(0, slideCount) : [];
   const backgroundScenes = normalizeBackgroundScenes(raw.backgroundScenes, profile);
 
-  while (slides.length < STORE_SLIDE_COUNT) {
+  while (slides.length < slideCount) {
     slides.push(fallback.slides[slides.length]);
   }
 
@@ -226,6 +234,7 @@ export async function generateStrategyBrief(
   const apiKey = getOpenAIKey();
   const chatModel = process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini";
   const screenshotCount = images.length;
+  const slideCount = profile.slideCount ?? 5;
   const localeDef = getLocaleDefinition(locale);
 
   const userContent: Array<
@@ -279,15 +288,17 @@ export async function generateStrategyBrief(
             content: [
               localeExpertPrompt(localeDef),
               "You are a senior App Store Optimization (ASO) strategist and creative director.",
-              "You design 5-slide screenshot sets that convert browsers into installers.",
-              "Every set tells ONE cohesive story: slide 1 pain/desire → slide 2 relief → slides 3–4 proof → slide 5 CTA recap.",
-              "Never use CTA verbs on slide 1 hook. Slide 5 must recap benefits from earlier slides.",
+              `You design ${slideCount}-slide screenshot sets that convert browsers into installers.`,
+              slideCount === 5
+                ? "Every set tells ONE cohesive story: slide 1 pain/desire → slide 2 relief → slides 3–4 proof → slide 5 CTA recap."
+                : `Every set tells ONE cohesive story: slide 1 is the hook (pain/desire), slides 2 to ${slideCount - 1} are features/proof, and slide ${slideCount} is the CTA recap.`,
+              `Never use CTA verbs on slide 1 hook. Slide ${slideCount} must recap benefits from earlier slides.`,
               "Headlines are benefit-first, 3–6 words, one keyword theme per slide (Apple OCR-indexes caption text).",
               "Do NOT repeat the same VERB+DESCRIPTOR headline template on every slide.",
               "featureHighlights and all copy must be in the target locale language.",
               "Match uploaded screenshots to the slide where they best prove the message.",
               "Prefer lifestyle_with_person or lifestyle_environment backgrounds — reserve abstract_brand for CTA only.",
-              "For each screenshot slide (1–4), mockupPose MUST use orientation tilt_left or tilt_right (never upright). Use placement auto or explicit left/right. sceneDescription must place people on the opposite side from the device.",
+              `For each screenshot slide (1–${slideCount - 1}), mockupPose should use tilt_left or tilt_right, or showcase_upright when a straight premium 3D device is better. Avoid plain upright unless the user explicitly wants a flat front frame. Use placement auto or explicit left/right. sceneDescription must place people on the opposite side from the device.`,
               "Rate each uploaded screenshot great, usable, or retake with specific issues. Split every headline into headlineVerb and headlineDescriptor when appropriate for the locale.",
             ].join(" "),
           },

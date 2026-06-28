@@ -22,7 +22,7 @@ export type LockedTypography = {
 export type ScreenshotQualityRating = "great" | "usable" | "retake";
 
 /** Per-glyph width factor for uppercase sans (Inter Black runs wide — leave headroom). */
-const GLYPH_WIDTH_RATIO = 0.64;
+const GLYPH_WIDTH_RATIO = 0.72;
 const CJK_GLYPH_WIDTH_RATIO = 1.0;
 
 function isCjkChar(char: string) {
@@ -118,6 +118,31 @@ export function fitFontSize(
   }
 
   return best;
+}
+
+/**
+ * Fits font size for multi-line text so that it wraps within maxLines without truncation.
+ */
+export function fitMultiLineFontSize(
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+  sizeMax: number,
+  sizeMin: number,
+  locale?: LocaleCode,
+): number {
+  const trimmed = text.trim();
+  if (!trimmed) return sizeMin;
+
+  let size = sizeMax;
+  while (size > sizeMin) {
+    const lines = wrapTextToMaxWidth(trimmed, maxWidth, size, 999, locale);
+    if (lines.length <= maxLines) {
+      return size;
+    }
+    size -= 2;
+  }
+  return sizeMin;
 }
 
 /** Intentionally disabled — stretching single words edge-to-edge clips and looks amateur. */

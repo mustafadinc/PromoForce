@@ -3,6 +3,7 @@
 import { MockupPoseControls } from "@/components/MockupPoseControls";
 import { MockupPosePreview } from "@/components/MockupPosePreview";
 import { MockupAssetSelector } from "@/components/MockupAssetSelector";
+import { VisualCompositionPanel } from "@/components/VisualCompositionPanel";
 import { ScreenshotVisualPanel } from "@/components/ScreenshotVisualPanel";
 import type {
   BackgroundTreatment,
@@ -11,8 +12,8 @@ import type {
   StoreSlidePlan,
   StrategyBrief,
 } from "@/lib/campaignTypes";
+import { isSceneMockup, mockupAssetForSlide, normalizeMockupAssetId } from "@/lib/assetMockup";
 import { normalizeMockupPose, mockupPoseForSlide } from "@/lib/mockupPose";
-import { DEFAULT_MOCKUP_ASSET_ID, isSceneMockup } from "@/lib/assetMockup";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
 import { isSlideSolidBackground } from "@/lib/storeCreativeDirector";
 
@@ -64,6 +65,10 @@ export function StoreSlideEditor({
     slide.screenshotIndex !== null
       ? screenshotPreviews.find((shot) => shot.index === slide.screenshotIndex)?.previewUrl
       : null;
+  const resolvedMockupId = normalizeMockupAssetId(
+    slide.mockupAssetId ?? mockupAssetForSlide(slide.slideNumber),
+  );
+  const usesSceneTemplate = isSceneMockup(resolvedMockupId);
 
   return (
     <div className="pf-carousel-step pf-step-split">
@@ -91,11 +96,13 @@ export function StoreSlideEditor({
           }
         >
           {isSlideSolidBackground(strategy.setMode, slide.slideNumber, strategy.styleAnchorSlide)
-            ? `Solid ${strategy.brandColor || strategy.accentColor}`
+            ? `Solid ${slide.backgroundFillColor || strategy.brandColor || strategy.accentColor}`
             : treatmentLabels[slide.backgroundTreatment]}
         </span>
         <span className="layout-badge">{layoutLabels[slide.layoutStyle]}</span>
       </div>
+
+      <VisualCompositionPanel slide={slide} strategy={strategy} />
 
       <div className="editable-slide-grid pf-store-slide-grid">
         <label className="field">
@@ -181,43 +188,48 @@ export function StoreSlideEditor({
           </label>
         ) : null}
 
-        {slide.screenshotUsage !== "none" ? (
+        {slide.screenshotUsage !== "none" || slide.screenshotIndex !== null ? (
           <div className="field field-wide mockup-pose-strategy-block">
             <MockupAssetSelector
-              value={slide.mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID}
+              value={resolvedMockupId}
               disabled={isGenerating}
               onChange={(mockupAssetId) => onUpdateSlide({ mockupAssetId })}
             />
-            {!isSceneMockup(slide.mockupAssetId) ? (
-              <>
-                <span className="field-label">Mockup layout (AI + composite)</span>
-                <p className="pf-form-section-hint">
-                  Angle, size, and position on the canvas. Background generation uses this to leave room for the device.
-                </p>
-                <div className="mockup-pose-strategy-row">
-                  <MockupPoseControls
-                    pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
-                    disabled={isGenerating}
-                    onChange={(mockupPose) => onUpdateSlide({ mockupPose })}
-                  />
-                  <button
-                    type="button"
-                    className="secondary-action compact-action"
-                    disabled={isGenerating}
-                    onClick={() => onUpdateSlide({ mockupPose: mockupPoseForSlide(slide.slideNumber) })}
-                  >
-                    Apply beat preset
-                  </button>
-                  <MockupPosePreview
-                    compact
-                    pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
-                    headline={slide.headline}
-                    subheadline={slide.subheadline}
-                    screenshotUrl={activeScreenshotUrl}
-                  />
-                </div>
-              </>
-            ) : null}
+            <span className="field-label">Mockup layout (AI + composite)</span>
+            <p className="pf-form-section-hint">
+              {usesSceneTemplate
+                ? "iPhone 16 template angle is baked in — AI generates the lifestyle background behind the cut-out device."
+                : "Angle, size, and position on the canvas. Background generation uses this to leave room for the device."}
+            </p>
+            <div className="mockup-pose-strategy-row">
+              <MockupPoseControls
+                pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
+                disabled={isGenerating || usesSceneTemplate}
+                onChange={(mockupPose) => onUpdateSlide({ mockupPose })}
+              />
+              <button
+                type="button"
+                className="secondary-action compact-action"
+                disabled={isGenerating}
+                onClick={() =>
+                  onUpdateSlide({
+                    mockupPose: mockupPoseForSlide(slide.slideNumber),
+                    mockupAssetId: mockupAssetForSlide(slide.slideNumber),
+                  })
+                }
+              >
+                Apply beat preset
+              </button>
+              <MockupPosePreview
+                compact
+                slideNumber={slide.slideNumber}
+                pose={normalizeMockupPose(slide.mockupPose, slide.slideNumber)}
+                headline={slide.headline}
+                subheadline={slide.subheadline}
+                screenshotUrl={activeScreenshotUrl}
+                mockupAssetId={resolvedMockupId}
+              />
+            </div>
           </div>
         ) : null}
 

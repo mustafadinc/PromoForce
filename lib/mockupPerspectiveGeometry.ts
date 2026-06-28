@@ -19,25 +19,17 @@ import {
 /** @deprecated Use poseAnglesForOrientation — kept for layout hints. */
 
 export const PERSPECTIVE_YAW_DEG: Record<MockupOrientation, number> = {
-
   upright: 0,
-
+  showcase_upright: 0,
   tilt_left: -23,
-
   tilt_right: 23,
-
 };
 
-
-
 export const PERSPECTIVE_PITCH_DEG: Record<MockupOrientation, number> = {
-
   upright: 0,
-
+  showcase_upright: 6,
   tilt_left: 6,
-
   tilt_right: 6,
-
 };
 
 

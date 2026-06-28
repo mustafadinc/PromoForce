@@ -10,12 +10,7 @@ import { createSolidBackground } from "@/lib/createSolidBackground";
 import { isSlideSolidBackground } from "@/lib/storeCreativeDirector";
 import { computeLockedTypographyFromHeadline } from "@/lib/asoTextLayout";
 import { compositeMarketingSlide, parseImageSize } from "@/lib/compositeMarketingSlide";
-import {
-  getSceneMockupAsset,
-  normalizeMockupAssetId,
-  type MockupAssetId,
-} from "@/lib/assetMockup";
-import { loadSceneMockupBuffer } from "@/lib/renderAssetDevice";
+import { normalizeMockupAssetId, type MockupAssetId } from "@/lib/assetMockup";
 import type {
   BackgroundTreatment,
   LockedTypography,
@@ -447,6 +442,7 @@ export type GenerateStoreSlideInput = {
   socialProof?: import("@/lib/campaignTypes").SocialProofInput;
   showSocialProof?: boolean;
   omitSubheadline?: boolean;
+  fontFamily?: string;
 };
 
 export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput): AsyncGenerator<ImageStreamEvent> {
@@ -462,7 +458,6 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
   const mockupAssetId = normalizeMockupAssetId(
     input.mockupAssetId ?? input.slidePlan?.mockupAssetId,
   );
-  const sceneAsset = getSceneMockupAsset(mockupAssetId);
 
   if (regenerateMode === "composite") {
     if (!input.existingBackgroundBase64) {
@@ -473,14 +468,8 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
       return;
     }
     yield { type: "status", message: "Reusing saved background — recompositing mockup..." };
-    backgroundBuffer = sceneAsset
-      ? await loadSceneMockupBuffer(sceneAsset, width, height)
-      : Buffer.from(input.existingBackgroundBase64, "base64");
-    modelUsed = sceneAsset ? "scene-mockup" : "saved-background";
-  } else if (sceneAsset) {
-    yield { type: "status", message: `Loading ${sceneAsset.label} scene mockup...` };
-    backgroundBuffer = await loadSceneMockupBuffer(sceneAsset, width, height);
-    modelUsed = "scene-mockup";
+    backgroundBuffer = Buffer.from(input.existingBackgroundBase64, "base64");
+    modelUsed = "saved-background";
   } else if (regenerateMode !== "background" && input.cachedBackgroundBase64) {
     yield {
       type: "status",
@@ -497,11 +486,12 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
       input.styleAnchorSlide ?? 1,
     )
   ) {
+    const fillColor = input.slidePlan.backgroundFillColor || input.brandColor;
     yield {
       type: "status",
-      message: `Creating solid brand background (${input.brandColor})...`,
+      message: `Creating background (${fillColor})...`,
     };
-    backgroundBuffer = await createSolidBackground(width, height, input.brandColor);
+    backgroundBuffer = await createSolidBackground(width, height, fillColor);
     modelUsed = "solid-brand";
   } else {
     for await (const event of streamBackgroundGeneration({ prompt: imagePrompt, size })) {
@@ -571,6 +561,8 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
         height,
         accentColor: input.accentColor,
         quoteAttribution: input.appName,
+        locale: input.locale,
+        fontFamily: input.fontFamily,
       })
     : await compositeMarketingSlide({
         background: backgroundBuffer,
@@ -593,11 +585,13 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
         mockupPose: input.mockupPose ?? input.slidePlan?.mockupPose,
         mockupAssetId,
         slideNumber: input.slidePlan?.slideNumber,
+        phoneHeightRatio: input.slidePlan?.phoneHeightRatio,
         locale: input.locale,
         socialProof: input.socialProof,
         showSocialProof: input.showSocialProof,
         omitSubheadline: input.omitSubheadline,
         asoBeat: input.slidePlan?.asoBeat,
+        fontFamily: input.fontFamily,
       });
 
   yield {

@@ -12,7 +12,7 @@ export const campaignTypeOptions: Array<{ value: CampaignType; label: string; de
   {
     value: "app_store",
     label: "App Store Set",
-    description: "5 portrait screenshots for the App Store listing (1290×2796 export).",
+    description: "1–10 portrait screenshots for the App Store listing (1290×2796 export).",
   },
   {
     value: "social_launch",
@@ -103,6 +103,9 @@ export type AppProfile = {
   locales?: LocaleCode[];
   /** Optional social proof for proof-beat slides. */
   socialProof?: SocialProofInput;
+  /** Number of screenshots to generate (1-10). */
+  slideCount?: number;
+  fontFamily?: string;
 };
 
 export type SlideRole = "hero" | "feature" | "cta";
@@ -230,6 +233,74 @@ export type StoreSlidePlan = {
   mockupPose?: MockupPose;
   /** Baked PSD mockup template (device showcase or lifestyle scene). */
   mockupAssetId?: MockupAssetId;
+  /** Art-director target phone height (0–1 canvas fraction). */
+  phoneHeightRatio?: number;
+  /** Programmatic background fill when setMode is solid/hybrid. */
+  backgroundFillColor?: string;
+/** @deprecated Scene mockups always composite on AI/custom background via device overlay. */
+  useSceneBackground?: boolean;
+  /** Pre-render visual QA scores from art director. */
+  visualScores?: VisualCompositionScores;
+  visualRetakeRequired?: boolean;
+  visualRetakeReasons?: string[];
+  visualRecommendations?: VisualRecommendation[];
+};
+
+export type VisualBackgroundStyle =
+  | "solid_brand_accent"
+  | "soft_light_gradient"
+  | "premium_dark_gradient"
+  | "light_mist"
+  | "minimal_studio"
+  | "neutral_desk"
+  | "abstract_glass"
+  | "subtle_lifestyle";
+
+export type VisualCompositionScores = {
+  mockupReadability: number;
+  mockupComposition: number;
+  visualAppeal: number;
+  textReadability: number;
+  backgroundSupport: number;
+  brandHarmony: number;
+  thumbnailClarity: number;
+  phoneCropSafety: number;
+  setVariety?: number;
+};
+
+export type VisualRecommendation = {
+  field: "angle" | "size" | "position" | "background" | "mockupAsset" | "layout" | "text";
+  recommended: string;
+  rationale: string;
+  avoid?: string;
+};
+
+export type SlideVisualPlan = {
+  slideNumber: number;
+  asoBeat: StoreSlideBeat;
+  mockupPose: MockupPose;
+  mockupAssetId?: MockupAssetId;
+  angleClass?: string;
+  phoneHeightRatio: number;
+  productFirst: boolean;
+  useSceneMockup?: boolean;
+  backgroundTreatment: BackgroundTreatment;
+  backgroundStyle: VisualBackgroundStyle;
+  layoutStyle: SlideLayoutStyle;
+  setMode: SetMode;
+  scores: VisualCompositionScores;
+  retakeRequired: boolean;
+  retakeReasons: string[];
+  recommendations: VisualRecommendation[];
+  rationale: string[];
+};
+
+export type VisualSetPlan = {
+  slides: SlideVisualPlan[];
+  setMode: SetMode;
+  setVarietyScore: number;
+  setVarietyIssues: string[];
+  brandAccentRole: "dominant" | "accent" | "balanced";
 };
 
 export type StrategyBrief = {
@@ -248,8 +319,11 @@ export type StrategyBrief = {
   backgroundScenes: BackgroundScene[];
   screenshotAssessments: ScreenshotAssessment[];
   screenshotIntelligence?: ScreenshotIntelligence[];
+  /** Visual art-director plan — mockup, background, QA scores. */
+  visualCompositionPlan?: VisualSetPlan;
   slides: StoreSlidePlan[];
   colorProfile?: ScreenshotColorProfile | null;
+  fontFamily?: string;
 };
 
 export type MultiLocaleStrategyResult = {
@@ -377,7 +451,7 @@ export type LocaleScreenshotsMap = Partial<Record<LocaleCode, UploadedScreenshot
 
 export const STORE_SLIDE_COUNT = 5;
 export const SOCIAL_ASSET_COUNT = 4;
-export const MAX_SCREENSHOTS = 5;
+export const MAX_SCREENSHOTS = 10;
 
 export type SocialPlatform = "instagram_feed" | "instagram_story" | "instagram_reels" | "twitter";
 

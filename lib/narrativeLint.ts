@@ -28,7 +28,7 @@ export function lintStrategyNarrative(strategy: StrategyBrief): NarrativeLintRes
   const slides = [...strategy.slides].sort((a, b) => a.slideNumber - b.slideNumber);
 
   for (const slide of slides) {
-    const expectedBeat = getBeatForSlide(slide.slideNumber);
+    const expectedBeat = getBeatForSlide(slide.slideNumber, strategy.slides.length);
     if (slide.asoBeat !== expectedBeat) {
       issues.push({
         slideNumber: slide.slideNumber,
@@ -50,7 +50,7 @@ export function lintStrategyNarrative(strategy: StrategyBrief): NarrativeLintRes
 
   const hook = slideByNumber(strategy, 1);
   const problem = slideByNumber(strategy, 2);
-  const cta = slideByNumber(strategy, 5);
+  const cta = slideByNumber(strategy, strategy.slides.length);
 
   if (hook && HOOK_CTA_PATTERN.test(hook.headline)) {
     issues.push({
@@ -81,18 +81,18 @@ export function lintStrategyNarrative(strategy: StrategyBrief): NarrativeLintRes
       /\b(free|today|now)\b/i.test(cta.headline);
     if (!hasAction) {
       issues.push({
-        slideNumber: 5,
+        slideNumber: strategy.slides.length,
         severity: "warning",
         code: "cta_weak_action",
-        message: "Slide 5 CTA lacks clear action or urgency — add install/start language.",
+        message: `Slide ${strategy.slides.length} CTA lacks clear action or urgency — add install/start language.`,
       });
     }
     if (cta.subheadline.trim().length < 12) {
       issues.push({
-        slideNumber: 5,
+        slideNumber: strategy.slides.length,
         severity: "warning",
         code: "cta_no_recap",
-        message: "Slide 5 subheadline should recap benefits from earlier slides.",
+        message: `Slide ${strategy.slides.length} subheadline should recap benefits from earlier slides.`,
       });
     }
     if (
@@ -102,10 +102,10 @@ export function lintStrategyNarrative(strategy: StrategyBrief): NarrativeLintRes
       cta.subheadline.length < 24
     ) {
       issues.push({
-        slideNumber: 5,
+        slideNumber: strategy.slides.length,
         severity: "warning",
         code: "cta_primary_message",
-        message: "Slide 5 should tie back to primary message and earlier benefits.",
+        message: `Slide ${strategy.slides.length} should tie back to primary message and earlier benefits.`,
       });
     }
   }

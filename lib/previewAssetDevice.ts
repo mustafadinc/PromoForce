@@ -2,15 +2,12 @@ import { ASSET_DEVICE, assetDeviceMirrored, assetScreenQuad } from "@/lib/assetM
 import type { MockupOrientation } from "@/lib/mockupPose";
 import type { PerspectiveQuad } from "@/lib/mockupPerspectiveGeometry";
 import { warpRectangleToQuadCanvas } from "@/lib/warpRectangleToQuadCanvas";
+import { loadPreviewImage } from "@/lib/previewImageLoad";
+
+export { drawSceneMockupPreview } from "@/lib/previewSceneMockup";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
+  return loadPreviewImage(src);
 }
 
 let devicePromise: Promise<HTMLImageElement> | null = null;

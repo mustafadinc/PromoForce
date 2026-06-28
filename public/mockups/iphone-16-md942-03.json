@@ -1,0 +1,61 @@
+{
+  "slug": "iphone-16-md942-03",
+  "kind": "scene",
+  "label": "iphone 16 md942 03",
+  "src": "/mockups/iphone-16-md942-03.png",
+  "deviceOverlaySrc": "/mockups/iphone-16-md942-03-device.png",
+  "fsPath": [
+    "public",
+    "mockups",
+    "iphone-16-md942-03.png"
+  ],
+  "deviceOverlayFsPath": [
+    "public",
+    "mockups",
+    "iphone-16-md942-03-device.png"
+  ],
+  "width": 1280,
+  "height": 2784,
+  "sourcePsd": "C:\\Users\\Alperen\\Downloads\\MD942_Free_iPhone16_Mockup\\MD942_Free_iPhone16_Mockup\\Free_iPhone_16_Mockup_3.psd",
+  "designLayer": "Design",
+  "screenQuad": {
+    "tl": {
+      "x": 329,
+      "y": 470
+    },
+    "tr": {
+      "x": 1065,
+      "y": 489
+    },
+    "br": {
+      "x": 1013,
+      "y": 2468
+    },
+    "bl": {
+      "x": 277,
+      "y": 2448
+    }
+  },
+  "screenQuadNorm": {
+    "tl": {
+      "x": 0.25703125,
+      "y": 0.16882183908045978
+    },
+    "tr": {
+      "x": 0.83203125,
+      "y": 0.17564655172413793
+    },
+    "br": {
+      "x": 0.79140625,
+      "y": 0.8864942528735632
+    },
+    "bl": {
+      "x": 0.21640625,
+      "y": 0.8793103448275862
+    }
+  },
+  "nativeSize": {
+    "width": 4000,
+    "height": 3000
+  }
+}

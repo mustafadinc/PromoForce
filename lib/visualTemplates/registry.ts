@@ -19,6 +19,8 @@ export type VisualTemplateInput = {
   quoteAttribution?: string;
   beforeLabel?: string;
   afterLabel?: string;
+  locale?: import("@/lib/locales").LocaleCode;
+  fontFamily?: string;
 };
 
 export async function renderVisualTemplate(
@@ -50,6 +52,8 @@ export async function renderVisualTemplate(
         accentColor: input.accentColor,
         layoutStyle: "hero_branded",
         showAppBranding: true,
+        locale: input.locale,
+        fontFamily: input.fontFamily,
       });
   }
 }

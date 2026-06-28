@@ -62,6 +62,7 @@ import {
   getScreenshotsForLocale,
   normalizeLocaleScreenshotsMap,
 } from "@/lib/localeScreenshots";
+import { normalizeMockupAssetId } from "@/lib/assetMockup";
 
 function jsonEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -661,7 +662,7 @@ export function useCampaignPipeline() {
             sourceDataUrl: selected.dataUrl,
             backgroundDataUrl,
             mockupPose: slide.mockupPose,
-            mockupAssetId: slide.mockupAssetId,
+            mockupAssetId: normalizeMockupAssetId(slide.mockupAssetId),
             variants: variantResults.length > 1 ? variantResults : undefined,
             selectedVariantId: selected.id,
           });
@@ -757,17 +758,16 @@ export function useCampaignPipeline() {
           existingBackgroundDataUrl:
             mode === "composite" ? existingSlide?.backgroundDataUrl : undefined,
           mockupColor:
-            mode === "composite"
-              ? options?.mockupColor ?? existingSlide?.mockupColor
-              : undefined,
+            options?.mockupColor ??
+            (mode === "composite" ? existingSlide?.mockupColor : undefined),
           mockupPose:
-            mode === "composite"
-              ? options?.mockupPose ?? existingSlide?.mockupPose
-              : undefined,
+            options?.mockupPose ??
+            (mode === "composite" ? existingSlide?.mockupPose : slide.mockupPose),
           mockupAssetId:
-            mode === "composite"
-              ? options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId
-              : slide.mockupAssetId,
+            options?.mockupAssetId ??
+            (mode === "composite"
+              ? existingSlide?.mockupAssetId ?? slide.mockupAssetId
+              : slide.mockupAssetId),
         },
         slideLocale,
       );
@@ -783,16 +783,18 @@ export function useCampaignPipeline() {
           ? result.backgroundDataUrl
           : existingSlide?.backgroundDataUrl;
 
-      const mockupColor =
-        mode === "composite" ? options?.mockupColor ?? existingSlide?.mockupColor : existingSlide?.mockupColor;
+      const mockupColor = options?.mockupColor ?? existingSlide?.mockupColor;
       const mockupPose =
-        mode === "composite"
-          ? options?.mockupPose ?? existingSlide?.mockupPose ?? slide.mockupPose
-          : slide.mockupPose ?? existingSlide?.mockupPose;
+        options?.mockupPose ??
+        (mode === "composite"
+          ? existingSlide?.mockupPose ?? slide.mockupPose
+          : slide.mockupPose ?? existingSlide?.mockupPose);
       const mockupAssetId =
         mode === "composite"
-          ? options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId
-          : slide.mockupAssetId ?? existingSlide?.mockupAssetId;
+          ? normalizeMockupAssetId(
+              options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId,
+            )
+          : normalizeMockupAssetId(options?.mockupAssetId ?? slide.mockupAssetId ?? existingSlide?.mockupAssetId);
 
       setGeneratedSlides((prev) =>
         prev.map((item) =>

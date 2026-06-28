@@ -65,3 +65,17 @@ export function downloadAppStoreZip(
     URL.revokeObjectURL(url);
   });
 }
+
+export async function downloadSingleAppStoreSlide(
+  slide: GeneratedSlide,
+  preset: AppStoreExportPreset,
+) {
+  const { width, height } = APP_STORE_EXPORT_PRESETS[preset];
+  const blob = await resizeDataUrlToPreset(slide.dataUrl, width, height);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `app-store-slide-${slide.slideNumber}-${width}x${height}.png`;
+  link.click();
+  URL.revokeObjectURL(url);
+}

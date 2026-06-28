@@ -120,6 +120,8 @@ export function poseAnglesForOrientation(orientation: MockupOrientation): {
       return { yawDeg: -23, pitchDeg: 6 };
     case "tilt_right":
       return { yawDeg: 23, pitchDeg: 6 };
+    case "showcase_upright":
+      return { yawDeg: 0, pitchDeg: 6 };
     default:
       return { yawDeg: 0, pitchDeg: 0 };
   }

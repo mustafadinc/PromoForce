@@ -44,7 +44,7 @@ function buildFallbackAudit(strategy: StrategyBrief): SetCoherenceAudit {
   }
 
   for (const slide of strategy.slides) {
-    const expected = getBeatForSlide(slide.slideNumber);
+    const expected = getBeatForSlide(slide.slideNumber, strategy.slides.length);
     if (slide.asoBeat !== expected) {
       issues.push({
         slideNumber: slide.slideNumber,
@@ -96,12 +96,13 @@ export async function auditSetCoherence(strategy: StrategyBrief): Promise<SetCoh
     })
     .join("\n\n");
 
+  const slideCount = strategy.slides.length;
   const slide1 = strategy.slides.find((s) => s.slideNumber === 1);
   const slide2 = strategy.slides.find((s) => s.slideNumber === 2);
-  const slide5 = strategy.slides.find((s) => s.slideNumber === 5);
+  const lastSlide = strategy.slides.find((s) => s.slideNumber === slideCount);
 
   const prompt = [
-    "Audit this 5-slide App Store screenshot strategy for narrative coherence and conversion flow.",
+    `Audit this ${slideCount}-slide App Store screenshot strategy for narrative coherence and conversion flow.`,
     "",
     `Positioning: ${strategy.positioning}`,
     `Primary message: ${strategy.primaryMessage}`,
@@ -111,12 +112,16 @@ export async function auditSetCoherence(strategy: StrategyBrief): Promise<SetCoh
     slideSummary,
     "",
     "Cross-slide checks:",
-    `- Slide 1 hook "${slide1?.headline || ""}" must connect to slide 2 "${slide2?.headline || ""}" (pain → relief).`,
-    `- Slide 5 CTA "${slide5?.headline || ""}" must recap benefits and align with primary message.`,
+    slide1 && slide2
+      ? `- Slide 1 hook "${slide1.headline}" must connect to slide 2 "${slide2.headline}" (pain → relief).`
+      : "",
+    lastSlide
+      ? `- Slide ${slideCount} CTA "${lastSlide.headline}" must recap benefits and align with primary message.`
+      : "",
     "",
     "Return JSON:",
     "{ overallScore (0-100), narrativeCohesion (0-100), copyUniqueness (0-100), arcCompleteness (0-100), strengths[], issues[{ slideNumber?, severity, message }], suggestions[] }",
-    "Score harshly if headlines repeat, beats are wrong, hook is a CTA, slide 1-2 don't connect, or slide 5 doesn't recap.",
+    `Score harshly if headlines repeat, beats are wrong, hook is a CTA, slide 1-2 don't connect, or slide ${slideCount} doesn't recap.`,
   ]
     .filter(Boolean)
     .join("\n");

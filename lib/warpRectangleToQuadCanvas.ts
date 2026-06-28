@@ -58,3 +58,48 @@ export function warpRectangleToQuadCanvas(
   ctx.putImageData(outData, 0, 0);
   return out;
 }
+
+/** Warp into a full canvas layer (matches server `warpScreenshotToQuad`). */
+export function warpRectangleToQuadFullCanvas(
+  source: CanvasImageSource,
+  srcW: number,
+  srcH: number,
+  destQuad: PerspectiveQuad,
+  canvasW: number,
+  canvasH: number,
+): HTMLCanvasElement {
+  const invH = homographyUnitSquareToQuadInverse(destQuad);
+
+  const srcCanvas = document.createElement("canvas");
+  srcCanvas.width = srcW;
+  srcCanvas.height = srcH;
+  const srcCtx = srcCanvas.getContext("2d");
+  if (!srcCtx) return document.createElement("canvas");
+  srcCtx.drawImage(source, 0, 0, srcW, srcH);
+  const imageData = srcCtx.getImageData(0, 0, srcW, srcH);
+
+  const out = document.createElement("canvas");
+  out.width = canvasW;
+  out.height = canvasH;
+  const ctx = out.getContext("2d");
+  if (!ctx) return out;
+
+  const outData = ctx.createImageData(canvasW, canvasH);
+  if (invH) {
+    for (let y = 0; y < canvasH; y += 1) {
+      for (let x = 0; x < canvasW; x += 1) {
+        const uv = homographyMapDestToSrc(invH, x + 0.5, y + 0.5);
+        const o = (y * canvasW + x) * 4;
+        if (!uv) continue;
+        const rgba = sampleBilinearPremultiplied(imageData.data, srcW, srcH, 4, uv.u, uv.v);
+        outData.data[o] = rgba[0];
+        outData.data[o + 1] = rgba[1];
+        outData.data[o + 2] = rgba[2];
+        outData.data[o + 3] = rgba[3];
+      }
+    }
+  }
+  cleanWarpAlphaFringe(outData.data, canvasW, canvasH);
+  ctx.putImageData(outData, 0, 0);
+  return out;
+}

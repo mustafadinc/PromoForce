@@ -2,6 +2,7 @@ import {
   DEFAULT_MOCKUP_ASSET_ID,
   getDeviceMockupAsset,
   normalizeMockupAssetId,
+  normalizeDeviceMockupAssetId,
   usesAssetMockup,
   type MockupAssetId,
 } from "@/lib/assetMockup";
@@ -23,6 +24,8 @@ import {
 } from "@/lib/mockupPose";
 import { usesPerspectiveMockup } from "@/lib/mockupPerspectiveGeometry";
 import { drawAssetDevicePreview } from "@/lib/previewAssetDevice";
+import { drawPerspectiveDevicePreview } from "@/lib/previewPerspectiveDevice";
+import { perspectiveFrameRasterSize } from "@/lib/metallicIPhoneFramePerspective";
 import { resolveMockupScreenFit } from "@/lib/mockupScreenFit";
 import type { SlideEditorDeviceState, SlideEditorState } from "@/lib/campaignTypes";
 import { SLIDE_EDITOR_STATE_VERSION } from "@/lib/campaignTypes";
@@ -31,8 +34,8 @@ export const BASE_DEVICE_RENDER_WIDTH = 420;
 
 const FRAME_ASPECT = METALLIC_FRAME_H / METALLIC_FRAME_W;
 const MIN_TEXT_DEVICE_GAP = 64;
-const BOTTOM_SAFE_MARGIN = 64;
-const PHONE_CHIN_CLEARANCE = 28;
+const BOTTOM_SAFE_MARGIN = 48;
+const PHONE_CHIN_CLEARANCE = -Math.round(2784 * 0.04);
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -125,6 +128,27 @@ async function buildAssetDeviceCanvas(
   return { canvas, width: deviceW, height: deviceH };
 }
 
+async function buildPerspectiveDeviceCanvas(
+  screenshotUrl: string,
+  frontW: number,
+  orientation: MockupPose["orientation"],
+  frameColor: MockupFrameColor,
+): Promise<DeviceCanvasResult> {
+  const { width, height, geometry } = perspectiveFrameRasterSize(orientation, frontW);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { canvas, width, height };
+
+  const scale = frontW / METALLIC_FRAME_W;
+  const stackX = -geometry.bounds.minX * scale;
+  const stackY = -geometry.bounds.minY * scale;
+
+  await drawPerspectiveDevicePreview(ctx, screenshotUrl, orientation, frontW, stackX, stackY, frameColor);
+  return { canvas, width, height };
+}
+
 export async function buildEditorDeviceCanvas(
   screenshotUrl: string,
   mockupPose: MockupPose,
@@ -132,9 +156,12 @@ export async function buildEditorDeviceCanvas(
   mockupAssetId?: MockupAssetId | null,
   baseWidth = BASE_DEVICE_RENDER_WIDTH,
 ): Promise<DeviceCanvasResult> {
-  const assetId = normalizeMockupAssetId(mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID);
+  const assetId = normalizeDeviceMockupAssetId(mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID);
   if (usesAssetMockup(mockupPose.orientation, assetId)) {
     return buildAssetDeviceCanvas(screenshotUrl, baseWidth, mockupPose.orientation, assetId);
+  }
+  if (usesPerspectiveMockup(mockupPose.orientation)) {
+    return buildPerspectiveDeviceCanvas(screenshotUrl, baseWidth, mockupPose.orientation, frameColor);
   }
   return buildUprightDeviceCanvas(screenshotUrl, baseWidth, frameColor);
 }
@@ -157,22 +184,28 @@ export function computeDefaultDeviceState(
   const scale = layoutScale(width, height, profile);
   const sizeMult = mockupPoseScaleMultiplier(mockupPose);
   const placement = resolveMockupPlacement(mockupPose);
+  const assetId = normalizeDeviceMockupAssetId(mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID);
+  const usesAssetDevice = usesAssetMockup(mockupPose.orientation, assetId);
+  const deviceAspect = usesAssetDevice
+    ? getDeviceMockupAsset(assetId).height / getDeviceMockupAsset(assetId).width
+    : FRAME_ASPECT;
 
   let phoneW = Math.round(width * profile.phoneWidthRatio * sizeMult);
   if (usesPerspectiveMockup(mockupPose.orientation)) {
     phoneW = Math.min(phoneW, perspectiveFrontWidthCap(width, mockupPose));
   }
 
-  let phoneH = Math.round(phoneW * FRAME_ASPECT);
+  let phoneH = Math.round(phoneW * deviceAspect);
   const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
   const bottomMargin = Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), 0) + chinClearance;
-  const topBound = textBlockBottom + MIN_TEXT_DEVICE_GAP;
+  const maxTextBottom = Math.round(height * profile.maxTextBlockHeightRatio);
+  const topBound = maxTextBottom + MIN_TEXT_DEVICE_GAP;
   const bottomBound = height - bottomMargin;
   const availableH = Math.max(0, bottomBound - topBound);
 
   if (availableH > 0 && phoneH > availableH) {
     phoneH = availableH;
-    phoneW = Math.round(phoneH / FRAME_ASPECT);
+    phoneW = Math.round(phoneH / deviceAspect);
   }
 
   const originX = applyMockupPlacementX(Math.round((width - phoneW) / 2), phoneW, width, placement);
@@ -183,8 +216,10 @@ export function computeDefaultDeviceState(
     yPct: (originY + phoneH / 2) / height,
     scale: phoneW / BASE_DEVICE_RENDER_WIDTH,
     rotationDeg: defaultRotationDeg(mockupPose.orientation),
-    frameColor: normalizeMockupFrameColor(frameColor ?? DEFAULT_MOCKUP_FRAME_COLOR),
-    mockupAssetId: normalizeMockupAssetId(mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID),
+    frameColor: normalizeMockupFrameColor(
+      frameColor ?? (assetId === "iphone-17-pro-cosmic-orange" ? "cosmic-orange" : DEFAULT_MOCKUP_FRAME_COLOR)
+    ),
+    mockupAssetId: assetId,
   };
 }
 

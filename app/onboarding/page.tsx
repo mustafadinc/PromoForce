@@ -3,7 +3,7 @@ import { SiteChrome } from "@/components/SiteChrome";
 
 const steps = [
   { n: 1, title: "Sign in", body: "Create your workspace with Google." },
-  { n: 2, title: "Add your app", body: "Name, category, description, and 1–5 screenshots." },
+  { n: 2, title: "Add your app", body: "Name, category, description, and 1–10 screenshots." },
   { n: 3, title: "Connect social", body: "Link Instagram Business and X in Settings." },
   { n: 4, title: "Generate campaign", body: "AI plans a dynamic 7 or 30-day calendar — formats, phases, and copy." },
   { n: 5, title: "Review & share", body: "Approve creatives, then Share now or schedule." },

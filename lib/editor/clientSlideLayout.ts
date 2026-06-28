@@ -78,7 +78,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
   const isCta = input.slidePlan.asoBeat === "download_cta";
   const profile = getCompositeLayoutProfile(input.width, input.height);
   const scale = layoutScale(input.width, input.height, profile);
-  const fontFamily = editorFontFamily(input.locale ?? input.strategy.locale);
+  const fontFamily = input.strategy.fontFamily || editorFontFamily(input.locale ?? input.strategy.locale);
   const accentColor = input.strategy.accentColor || input.strategy.brandColor || "#6366f1";
 
   const layout = computeAsoTextLayout(

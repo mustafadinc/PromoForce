@@ -11,6 +11,7 @@ import {
 } from "@/lib/compositeLayoutProfile";
 import {
   fitFontSize,
+  fitMultiLineFontSize,
   splitHeadlineParts,
   wrapTextToMaxWidth,
   estimateTextWidth,
@@ -19,7 +20,7 @@ import {
 /** Bottom edge of logo row (reference px @ 1280w). */
 const BRANDING_ZONE_BOTTOM = 112;
 const HEADLINE_GAP_BELOW_BRAND = 36;
-const HEADLINE_TOP_BASELINE = 172;
+const HEADLINE_TOP_BASELINE = 212;
 const CAP_HEIGHT_RATIO = 0.82;
 const SUB_SIZE_DESCRIPTOR_RATIO = 0.56;
 
@@ -58,16 +59,6 @@ function computeFirstLineBaseline(
   height: number,
   profile: CompositeLayoutProfile,
 ): number {
-  if (isCta) {
-    return Math.round(height * (profile.format === "landscape" ? 0.12 : 0.14));
-  }
-  if (reserveTopForBranding) {
-    return (
-      Math.round(BRANDING_ZONE_BOTTOM * scale) +
-      Math.round(HEADLINE_GAP_BELOW_BRAND * scale) +
-      Math.round(verbSize * CAP_HEIGHT_RATIO)
-    );
-  }
   if (profile.format === "square") {
     return Math.round(height * 0.055) + Math.round(verbSize * CAP_HEIGHT_RATIO);
   }
@@ -94,22 +85,7 @@ export type AsoTextLayout = {
   textAnchor: "middle" | "start";
 };
 
-function estimateSubMax(
-  subheadline: string,
-  maxWidth: number,
-  startSize: number,
-  profile: CompositeLayoutProfile,
-) {
-  let size = startSize;
-  const min = Math.round(profile.subSizeMin * 0.55);
-  while (size >= min) {
-    const lines = wrapTextToMaxWidth(subheadline, maxWidth, size, 2);
-    const longest = Math.max(...lines.map((l) => l.length * size * 0.64), 0);
-    if (longest <= maxWidth) return size;
-    size -= 2;
-  }
-  return min;
-}
+
 
 export function computeAsoTextLayout(
   headline: string,
@@ -122,8 +98,10 @@ export function computeAsoTextLayout(
   lockedTypography?: LockedTypography,
   reserveTopForBranding = false,
   locale?: LocaleCode,
+  maxTextBlockHeightRatio?: number,
 ): AsoTextLayout {
   const profile = getCompositeLayoutProfile(width, height);
+  const textMaxRatio = maxTextBlockHeightRatio ?? profile.maxTextBlockHeightRatio;
   const scale = layoutScale(width, height, profile);
   const safeWidth = width * profile.textSafeWidthRatio;
   const textAnchorX =
@@ -148,25 +126,35 @@ export function computeAsoTextLayout(
     );
     verbSize = Math.round(fitFontSize(verb, safeWidth, verbMax, verbMin, locale));
     descriptorSize = Math.round(profile.descriptorSize * scale);
-    if (descriptor && estimateTextWidth(descriptor, descriptorSize, locale) > safeWidth) {
-      descriptorSize = fitFontSize(
+    if (verb) {
+      descriptorSize = Math.min(descriptorSize, Math.round(verbSize * 0.60));
+    }
+    if (descriptor) {
+      descriptorSize = fitMultiLineFontSize(
         descriptor,
         safeWidth,
+        3,
         descriptorSize,
-        Math.round(profile.descriptorSize * 0.72 * scale),
+        Math.round(profile.descriptorSize * 0.32 * scale),
         locale,
       );
     }
     subSize = computeSubSize(descriptorSize, scale, isCta, profile);
-    const subMax = estimateSubMax(subheadline, safeWidth, subSize, profile);
-    if (subMax < subSize) {
-      subSize = Math.max(Math.round(profile.subSizeMin * scale), subMax);
+    if (subheadline.trim()) {
+      subSize = fitMultiLineFontSize(
+        subheadline,
+        safeWidth * 0.95,
+        2,
+        subSize,
+        Math.round(profile.subSizeMin * scale),
+        locale,
+      );
     }
   }
 
   const verbLines = verb ? [verb] : [];
   const descriptorLines = descriptor
-    ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, isCta ? 3 : 2, locale)
+    ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, 3, locale)
     : [];
 
   const subLines = subheadline.trim()
@@ -187,7 +175,7 @@ export function computeAsoTextLayout(
 
   let y = textTopY + verbSize;
   if (descriptorLines.length) {
-    y += Math.round(descriptorSize * 0.2) + descriptorLines.length * descGap;
+    y += Math.round(descriptorSize * 0.38) + descriptorLines.length * descGap;
   } else if (verbLines.length) {
     y += verbGap * 0.2;
   }
@@ -195,7 +183,7 @@ export function computeAsoTextLayout(
     y += Math.round(subSize * 0.55) + subLines.length * subGap;
   }
 
-  const maxTextBottom = Math.round(height * profile.maxTextBlockHeightRatio);
+  const maxTextBottom = Math.round(height * textMaxRatio);
   const textBlockBottom = Math.min(y, maxTextBottom);
 
   return {

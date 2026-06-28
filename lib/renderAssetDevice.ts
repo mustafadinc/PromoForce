@@ -217,7 +217,7 @@ export async function renderAssetDeviceLayer(
   return { buffer, width: raster.width, height: raster.height };
 }
 
-async function loadDeviceOverlay(asset: SceneMockupAsset, width: number, height: number): Promise<Buffer> {
+export async function loadSceneDeviceOverlayBuffer(asset: SceneMockupAsset, width: number, height: number): Promise<Buffer> {
   const source = await readFile(path.join(process.cwd(), ...asset.deviceOverlayFsPath));
   return sharp(source)
     .resize(width, height, { fit: "cover", position: "centre" })
@@ -239,7 +239,7 @@ export async function renderSceneMockupLayer(
   
   let deviceOverlay: Buffer | null = null;
   try {
-    deviceOverlay = await loadDeviceOverlay(asset, width, height);
+    deviceOverlay = await loadSceneDeviceOverlayBuffer(asset, width, height);
   } catch (e) {
     console.warn("[renderSceneMockupLayer] Missing device overlay", e);
   }

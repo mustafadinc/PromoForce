@@ -15,6 +15,7 @@ import {
 import { normalizeMockupPose, resolveMockupPlacement, type MockupPose } from "@/lib/mockupPose";
 import { resolveBackgroundScene } from "@/lib/storeCreativeDirector";
 import { storeSlideBeatMeta } from "@/lib/storeSetAsoFramework";
+import { backgroundPromptFromVisualPlan, getSlideVisualPlan } from "@/lib/visualArtDirector/planVisualSet";
 
 const treatmentPrompts: Record<BackgroundTreatment, string> = {
   lifestyle_with_person:
@@ -48,9 +49,11 @@ export function buildStoreSlideBackgroundPrompt(
   const usesScreenshot = slide.screenshotUsage !== "none" && !isCtaSlide;
   const mockupPose = normalizeMockupPose(options?.mockupPose ?? slide.mockupPose, slide.slideNumber);
   const resolvedPlacement = resolveMockupPlacement(mockupPose);
+  const visualPlan = getSlideVisualPlan(strategy, slide.slideNumber);
 
   const rawSceneDescription =
     scene?.sceneDescription ||
+    (visualPlan ? backgroundPromptFromVisualPlan(visualPlan, strategy.accentColor, strategy.brandColor) : null) ||
     slide.visualVariant ||
     slide.backgroundRationale ||
     storeSlideBeatMeta[slide.asoBeat].visualVariantHint;
@@ -76,6 +79,20 @@ export function buildStoreSlideBackgroundPrompt(
     slide.keywordTheme ? `ASO keyword theme for this slide: "${slide.keywordTheme}" (context only — no text in image).` : "",
     scene ? `Background scene "${scene.label}" (shared by slides ${scene.sharedBySlides.join(", ")}).` : "",
     slide.backgroundRationale ? `Creative rationale: ${slide.backgroundRationale}` : "",
+    visualPlan
+      ? [
+          "VISUAL ART DIRECTION (product-first — mockup is the hero, not decoration):",
+          `Background style: ${visualPlan.backgroundStyle.replace(/_/g, " ")}.`,
+          visualPlan.productFirst ? "Product-first slide — background stays secondary to phone UI." : "",
+          visualPlan.rationale[0] ? `Art director note: ${visualPlan.rationale[0]}` : "",
+          slide.backgroundFillColor
+            ? `When rendered as solid fill, use ${slide.backgroundFillColor} — brand accent ${strategy.accentColor} as highlight only.`
+            : `Brand accent ${strategy.accentColor} as subtle highlight — avoid flat monochrome ${strategy.brandColor} on every slide.`,
+          visualPlan.recommendations.find((r) => r.field === "background" && r.avoid)
+            ? `Avoid: ${visualPlan.recommendations.find((r) => r.field === "background")?.avoid}`
+            : "",
+        ].filter(Boolean).join("\n")
+      : "",
     options?.styleAnchorHint && slide.slideNumber !== strategy.styleAnchorSlide
       ? `Match visual polish, color grade, and photoshoot mood of style anchor slide ${strategy.styleAnchorSlide}: ${options.styleAnchorHint}. Same brand world — not a different aesthetic.`
       : slide.slideNumber > 1 && slide.slideNumber <= 4

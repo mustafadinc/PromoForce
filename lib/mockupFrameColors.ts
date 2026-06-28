@@ -6,7 +6,8 @@ export type MockupFramePresetId =
   | "white"
   | "gold"
   | "blue"
-  | "graphite";
+  | "graphite"
+  | "cosmic-orange";
 
 export type MockupFrameColor = MockupFramePresetId | (string & {});
 
@@ -23,6 +24,7 @@ export const MOCKUP_FRAME_PRESETS: ReadonlyArray<{
   { id: "gold", label: "Gold", color: "#c8a951" },
   { id: "blue", label: "Blue", color: "#7eb0c9" },
   { id: "graphite", label: "Graphite", color: "#48484a" },
+  { id: "cosmic-orange", label: "Cosmic Orange", color: "#e06b2b" },
 ];
 
 const PRESET_BY_ID = Object.fromEntries(MOCKUP_FRAME_PRESETS.map((p) => [p.id, p.color])) as Record<
@@ -99,35 +101,35 @@ export function mockupFrameCacheKey(color?: MockupFrameColor | null): string {
 }
 
 export function buildMockupFrameGradients(baseHex: string, id: string) {
-  const highlight = tone(baseHex, 0.62);
-  const midLight = tone(baseHex, 0.28);
+  const highlight = tone(baseHex, 0.85);
+  const midLight = tone(baseHex, 0.35);
   const mid = baseHex;
-  const midDark = tone(baseHex, -0.22);
-  const shadow = tone(baseHex, -0.42);
-  const deep = tone(baseHex, -0.55);
-  const btnTop = tone(baseHex, 0.38);
-  const btnMid = tone(baseHex, -0.08);
-  const btnBottom = tone(baseHex, -0.35);
+  const midDark = tone(baseHex, -0.15);
+  const shadow = tone(baseHex, -0.45);
+  const deep = tone(baseHex, -0.65);
+  const btnTop = tone(baseHex, 0.45);
+  const btnMid = tone(baseHex, -0.15);
+  const btnBottom = tone(baseHex, -0.45);
 
   const titanium = `<linearGradient id="${id}-titanium" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="${highlight}"/>
-      <stop offset="6%" stop-color="${tone(baseHex, 0.48)}"/>
-      <stop offset="18%" stop-color="${midLight}"/>
-      <stop offset="32%" stop-color="${tone(baseHex, -0.12)}"/>
-      <stop offset="46%" stop-color="${midDark}"/>
-      <stop offset="54%" stop-color="${shadow}"/>
-      <stop offset="66%" stop-color="${mix(mid, highlight, 0.35)}"/>
-      <stop offset="80%" stop-color="${tone(baseHex, 0.34)}"/>
-      <stop offset="92%" stop-color="${tone(baseHex, 0.52)}"/>
-      <stop offset="100%" stop-color="${tone(baseHex, 0.68)}"/>
+      <stop offset="5%" stop-color="${tone(baseHex, 0.55)}"/>
+      <stop offset="15%" stop-color="${midLight}"/>
+      <stop offset="30%" stop-color="${tone(baseHex, -0.05)}"/>
+      <stop offset="45%" stop-color="${midDark}"/>
+      <stop offset="55%" stop-color="${shadow}"/>
+      <stop offset="65%" stop-color="${mix(mid, highlight, 0.4)}"/>
+      <stop offset="80%" stop-color="${tone(baseHex, 0.45)}"/>
+      <stop offset="92%" stop-color="${tone(baseHex, 0.65)}"/>
+      <stop offset="100%" stop-color="${tone(baseHex, 0.9)}"/>
     </linearGradient>`;
 
   const edgeShine = `<linearGradient id="${id}-edge-shine" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.65"/>
-      <stop offset="8%" stop-color="#ffffff" stop-opacity="0.1"/>
-      <stop offset="50%" stop-color="#000000" stop-opacity="0.1"/>
-      <stop offset="92%" stop-color="#000000" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="6%" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#000000" stop-opacity="0.15"/>
+      <stop offset="94%" stop-color="#000000" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.45"/>
     </linearGradient>`;
 
   const btn = `<linearGradient id="${id}-btn" x1="0%" y1="0%" x2="0%" y2="100%">

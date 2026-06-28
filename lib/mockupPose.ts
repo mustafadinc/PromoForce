@@ -1,4 +1,4 @@
-export type MockupOrientation = "upright" | "tilt_left" | "tilt_right";
+export type MockupOrientation = "upright" | "showcase_upright" | "tilt_left" | "tilt_right";
 export type MockupScale = "compact" | "standard" | "hero";
 export type MockupPlacement = "center" | "left" | "right" | "auto";
 
@@ -8,26 +8,20 @@ export type MockupPose = {
   placement: MockupPlacement;
 };
 
-export const DEFAULT_MOCKUP_POSE: MockupPose = {
-  orientation: "tilt_right",
-  scale: "hero",
-  placement: "right",
-};
-
-const SCALE_MULTIPLIER: Record<MockupScale, number> = {
-  compact: 0.76,
-  standard: 1,
-  hero: 1.08,
-};
-
-/** Per-slide ASO poses — varied angles; slide 5 is CTA (no mockup in composite). */
+/** Per-slide ASO poses — product-first, readable, varied (competitor-aligned). */
 export const SLIDE_MOCKUP_POSE_PRESETS: MockupPose[] = [
-  { orientation: "tilt_right", scale: "hero", placement: "auto" },
-  { orientation: "tilt_left", scale: "standard", placement: "auto" },
-  { orientation: "tilt_right", scale: "standard", placement: "auto" },
-  { orientation: "tilt_left", scale: "compact", placement: "auto" },
-  { orientation: "upright", scale: "compact", placement: "center" },
+  { orientation: "showcase_upright", scale: "hero", placement: "center" },
+  { orientation: "upright", scale: "standard", placement: "center" },
+  { orientation: "showcase_upright", scale: "standard", placement: "center" },
+  { orientation: "upright", scale: "standard", placement: "center" },
+  { orientation: "upright", scale: "standard", placement: "center" },
 ];
+
+export const DEFAULT_MOCKUP_POSE: MockupPose = {
+  orientation: "showcase_upright",
+  scale: "standard",
+  placement: "center",
+};
 
 export function mockupPoseForSlide(slideNumber: number): MockupPose {
   return SLIDE_MOCKUP_POSE_PRESETS[Math.min(Math.max(slideNumber - 1, 0), SLIDE_MOCKUP_POSE_PRESETS.length - 1)];
@@ -40,20 +34,11 @@ export function normalizeMockupPose(raw: unknown, slideNumber?: number): MockupP
   const row = raw as Partial<MockupPose>;
   let orientation: MockupOrientation =
     row.orientation === "upright" ||
+    row.orientation === "showcase_upright" ||
     row.orientation === "tilt_left" ||
     row.orientation === "tilt_right"
       ? row.orientation
       : fallback.orientation;
-
-  // Screenshot slides: flat upright reads as a pasted screenshot — use per-slide 3D preset.
-  if (
-    slideNumber &&
-    slideNumber <= 4 &&
-    orientation === "upright" &&
-    fallback.orientation !== "upright"
-  ) {
-    orientation = fallback.orientation;
-  }
 
   return {
     orientation,
@@ -79,14 +64,32 @@ export function resolveCompositeMockupPose(
   return normalizeMockupPose(pose, slideNumber);
 }
 
+const SCALE_MULTIPLIER: Record<MockupScale, number> = {
+  compact: 0.72,
+  standard: 0.92,
+  hero: 1.08,
+};
+
 export function mockupPoseScaleMultiplier(pose: MockupPose): number {
   return SCALE_MULTIPLIER[pose.scale];
 }
 
-/** Max front-face width on canvas for 3D tilts (SWAY-style, not full-bleed flat paste). */
+/** Adjust layout scale to hit art-director phone height target (0–1 canvas fraction). */
+export function phoneHeightLayoutScale(
+  phoneHeightRatio: number | undefined,
+  canvasHeight: number,
+  computedPhoneHeight: number,
+): number {
+  if (!phoneHeightRatio || phoneHeightRatio <= 0 || computedPhoneHeight <= 0) return 1;
+  const target = canvasHeight * phoneHeightRatio;
+  const scale = target / computedPhoneHeight;
+  return Math.max(0.78, Math.min(1.28, scale));
+}
+
+/** Max front-face width — raised for product-first centered mockups. */
 export function perspectiveFrontWidthCap(canvasWidth: number, pose: MockupPose): number {
   const ratio =
-    pose.scale === "hero" ? 0.58 : pose.scale === "compact" ? 0.52 : 0.62;
+    pose.scale === "hero" ? 0.72 : pose.scale === "compact" ? 0.58 : 0.68;
   return Math.round(canvasWidth * ratio * mockupPoseScaleMultiplier(pose));
 }
 
@@ -129,7 +132,9 @@ export function mockupPoseCompositionHint(pose: MockupPose): string {
       ? "Device in premium 3D showcase (~20° yaw) with LEFT edge toward camera — visible side + readable front screen."
       : pose.orientation === "tilt_right"
         ? "Device in premium 3D showcase (~20° yaw) with RIGHT edge toward camera — visible side + readable front screen (SWAY reference)."
-        : "Device faces camera flat-on — symmetric front view.";
+        : pose.orientation === "showcase_upright"
+          ? "Device uses the premium 3D showcase mockup but stands straight with no extra rotation."
+          : "Device faces camera flat-on — symmetric front view.";
 
   return [scaleLine, placementLine, tiltLine].join(" ");
 }
@@ -137,13 +142,14 @@ export function mockupPoseCompositionHint(pose: MockupPose): string {
 /** Resolve auto placement to a concrete side for layout/prompts. */
 export function resolveMockupPlacement(pose: MockupPose): Exclude<MockupPlacement, "auto"> {
   if (pose.placement === "auto") {
-    return pose.orientation === "tilt_left" ? "left" : "right";
+    return "center";
   }
   return pose.placement;
 }
 
 export const MOCKUP_ORIENTATION_OPTIONS: Array<{ value: MockupOrientation; label: string }> = [
   { value: "upright", label: "Front (flat)" },
+  { value: "showcase_upright", label: "3D showcase — straight" },
   { value: "tilt_left", label: "3D showcase — left edge visible" },
   { value: "tilt_right", label: "3D showcase — right edge (SWAY hero)" },
 ];

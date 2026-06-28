@@ -348,6 +348,9 @@ export function AppSetupForm({
 
   const [rating, setRating] = useState("");
 
+  const [slideCount, setSlideCount] = useState<number>(5);
+  const [fontFamily, setFontFamily] = useState<string>("Inter");
+
   const isAutopilot = campaignType === "marketing_autopilot";
 
   const isAppStore = campaignType === "app_store";
@@ -383,19 +386,18 @@ export function AppSetupForm({
   };
 
   useEffect(() => {
-
     if (workspaceProfile) {
-
       setProfile(workspaceProfile);
-
       if (workspaceProfile.locales?.length) {
-
         setSelectedLocales(workspaceProfile.locales);
-
       }
-
+      if (workspaceProfile.slideCount) {
+        setSlideCount(workspaceProfile.slideCount);
+      }
+      if (workspaceProfile.fontFamily) {
+        setFontFamily(workspaceProfile.fontFamily);
+      }
     }
-
   }, [workspaceProfile]);
 
 
@@ -423,45 +425,27 @@ export function AppSetupForm({
 
 
   useEffect(() => {
-
     onDraftChange?.({
-
       campaignType,
-
-      profile,
-
+      profile: { ...profile, slideCount, fontFamily },
       screenshots: isAppStore ? [] : screenshots,
-
       screenshotsByLocale: isAppStore ? screenshotsByLocale : undefined,
-
       selectedLocales: isAppStore ? selectedLocales : undefined,
-
       autopilotConfig: isAutopilot ? { duration, startDate } : undefined,
-
     });
-
   }, [
-
     campaignType,
-
     profile,
-
+    slideCount,
+    fontFamily,
     screenshots,
-
     screenshotsByLocale,
-
     selectedLocales,
-
     duration,
-
     startDate,
-
     isAutopilot,
-
     isAppStore,
-
     onDraftChange,
-
   ]);
 
 
@@ -763,33 +747,21 @@ export function AppSetupForm({
     setUploadError("");
 
     const nextProfile: AppProfile = {
-
       ...profile,
-
+      slideCount,
+      fontFamily,
       appTitle: appTitle.trim() || undefined,
-
       appSubtitle: appSubtitle.trim() || undefined,
-
       keywords: keywords.trim() || undefined,
-
       locales: nextLocales,
-
       socialProof: {
-
         reviewQuotes: reviewQuotes
-
           .split("\n")
-
           .map((line) => line.trim())
-
           .filter(Boolean),
-
         downloadCount: downloadCount.trim() || undefined,
-
         rating: rating ? Number.parseFloat(rating) : undefined,
-
       },
-
     };
 
 
@@ -1053,6 +1025,43 @@ export function AppSetupForm({
                 </div>
 
               </fieldset>
+
+              <label className="field">
+                <span>Number of screenshots to generate</span>
+                <select
+                  value={slideCount}
+                  onChange={(event) => setSlideCount(Number(event.target.value))}
+                >
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                    <option key={num} value={num}>
+                      {num} {num === 5 ? "(Recommended)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Font Family</span>
+                <select
+                  value={fontFamily}
+                  onChange={(event) => setFontFamily(event.target.value)}
+                >
+                  {[
+                    "Inter",
+                    "Roboto",
+                    "Montserrat",
+                    "Oswald",
+                    "Playfair Display",
+                    "Poppins",
+                    "Outfit",
+                    "Caveat"
+                  ].map((font) => (
+                    <option key={font} value={font}>
+                      {font} {font === "Inter" ? "(Recommended)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
 
 

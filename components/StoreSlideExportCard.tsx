@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Copy, Download, Sparkles } from "lucide-react";
+import { Copy, Download, Image, Smartphone, Sparkles } from "lucide-react";
 
 import { MockupPoseControls } from "@/components/MockupPoseControls";
 import { MockupAssetSelector } from "@/components/MockupAssetSelector";
@@ -27,7 +27,7 @@ import {
 import { normalizeMockupPose } from "@/lib/mockupPose";
 import {
   DEFAULT_MOCKUP_ASSET_ID,
-  isSceneMockup,
+  isUnknownMockupAssetId,
   normalizeMockupAssetId,
 } from "@/lib/assetMockup";
 
@@ -47,6 +47,10 @@ type StoreSlideExportCardProps = {
 
   onDownload: (slide: GeneratedSlide) => void;
 
+  onDownloadMockupOnly?: (slide: GeneratedSlide) => void | Promise<void>;
+
+  canDownloadMockupOnly?: boolean;
+
   onCopyHeadline: (text: string) => void;
 
   onRegenerateSlide?: (
@@ -62,6 +66,12 @@ type StoreSlideExportCardProps = {
   onSelectVariant?: (slideNumber: number, variantId: string) => void;
 
   onOpenLiveEditor?: (slide: GeneratedSlide) => void;
+
+  hasMockup?: boolean;
+
+  slideCount?: number;
+
+  onDownloadBackgroundOnly?: (slide: GeneratedSlide) => void;
 
 };
 
@@ -81,6 +91,12 @@ export function StoreSlideExportCard({
 
   onDownload,
 
+  onDownloadMockupOnly,
+
+  onDownloadBackgroundOnly,
+
+  canDownloadMockupOnly: _canDownloadMockupOnly = false,
+
   onCopyHeadline,
 
   onRegenerateSlide,
@@ -89,9 +105,13 @@ export function StoreSlideExportCard({
 
   onOpenLiveEditor,
 
+  hasMockup: propsHasMockup,
+
+  slideCount = 5,
+
 }: StoreSlideExportCardProps) {
 
-  const beat = slide.asoBeat ?? getBeatForSlide(slide.slideNumber);
+  const beat = slide.asoBeat ?? getBeatForSlide(slide.slideNumber, slideCount);
   const slideLabel = storeSlideBeatMeta[beat].label;
 
   const [mockupColor, setMockupColor] = useState<MockupFrameColor>(
@@ -107,9 +127,12 @@ export function StoreSlideExportCard({
     normalizeMockupAssetId(slide.mockupAssetId ?? DEFAULT_MOCKUP_ASSET_ID),
   );
 
-  const showMockupControls = slide.asoBeat !== "download_cta" && !isSceneMockup(mockupAssetId);
-  const canComposite = Boolean(slide.backgroundDataUrl) || isSceneMockup(mockupAssetId);
-  const canLiveEdit = Boolean(onOpenLiveEditor && slide.backgroundDataUrl && !isSceneMockup(mockupAssetId));
+  const hasMockup = propsHasMockup ?? true;
+  const showMockupControls = hasMockup;
+  const hasLegacySceneMockup = isUnknownMockupAssetId(slide.mockupAssetId);
+  const canDownloadMockupOnly = Boolean(hasMockup && !hasLegacySceneMockup);
+  const canComposite = Boolean(slide.backgroundDataUrl) && hasMockup && !hasLegacySceneMockup;
+  const canLiveEdit = Boolean(onOpenLiveEditor && slide.backgroundDataUrl && hasMockup);
 
 
 
@@ -169,11 +192,33 @@ export function StoreSlideExportCard({
 
           </button>
 
-          <button type="button" className="pf-export-hover-btn" onClick={() => onDownload(slide)} title="Download PNG">
+          <button type="button" className="pf-export-hover-btn" onClick={() => onDownload(slide)} title="Download full slide PNG">
 
             <Download aria-hidden="true" />
 
           </button>
+
+          {canDownloadMockupOnly && onDownloadMockupOnly ? (
+            <button
+              type="button"
+              className="pf-export-hover-btn"
+              onClick={() => void onDownloadMockupOnly(slide)}
+              title="Download mockup only (transparent PNG)"
+            >
+              <Smartphone aria-hidden="true" />
+            </button>
+          ) : null}
+
+          {slide.backgroundDataUrl && onDownloadBackgroundOnly ? (
+            <button
+              type="button"
+              className="pf-export-hover-btn"
+              onClick={() => void onDownloadBackgroundOnly(slide)}
+              title="Download background only (PNG)"
+            >
+              <Image aria-hidden="true" />
+            </button>
+          ) : null}
 
           <span className="pf-export-hover-label">Quick actions</span>
 
@@ -249,9 +294,29 @@ export function StoreSlideExportCard({
 
         <button className="slide-action slide-action-download" type="button" onClick={() => onDownload(slide)}>
 
-          Download PNG
+          Download slide
 
         </button>
+
+        {canDownloadMockupOnly && onDownloadMockupOnly ? (
+          <button
+            className="slide-action slide-action-mockup-only"
+            type="button"
+            onClick={() => void onDownloadMockupOnly(slide)}
+          >
+            Download mockup only
+          </button>
+        ) : null}
+
+        {slide.backgroundDataUrl && onDownloadBackgroundOnly ? (
+          <button
+            className="slide-action slide-action-background-only"
+            type="button"
+            onClick={() => void onDownloadBackgroundOnly(slide)}
+          >
+            Download background
+          </button>
+        ) : null}
 
         {canLiveEdit ? (
           <button
@@ -355,7 +420,7 @@ export function StoreSlideExportCard({
                 onClick={() =>
                   onRegenerateSlide(slide.slideNumber, "composite", {
                     mockupColor,
-                    mockupPose: showMockupControls ? mockupPose : undefined,
+                    mockupPose,
                     mockupAssetId,
                   })
                 }
@@ -378,7 +443,13 @@ export function StoreSlideExportCard({
 
                 type="button"
 
-                onClick={() => onRegenerateSlide(slide.slideNumber, "background")}
+                onClick={() =>
+                  onRegenerateSlide(slide.slideNumber, "background", {
+                    mockupColor,
+                    mockupPose,
+                    mockupAssetId,
+                  })
+                }
 
                 disabled={isGenerating}
 
@@ -417,4 +488,3 @@ export function StoreSlideExportCard({
   );
 
 }
-

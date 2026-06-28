@@ -133,10 +133,11 @@ export async function POST(request: Request) {
         mockupPose,
         mockupAssetId,
         styleAnchorSlide: strategy.styleAnchorSlide,
-        locale: strategy.locale,
         socialProof: profile.socialProof,
         showSocialProof: slide.showSocialProof,
-        omitSubheadline: slide.asoBeat === "hook",
+        omitSubheadline: false, // Ensure subheadline is visible on slide 1
+        locale: strategy.locale || "en",
+        fontFamily: strategy.fontFamily || "Inter",
       },
       {
         mode: "provider",

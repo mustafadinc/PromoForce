@@ -19,7 +19,11 @@ import { STORE_SLIDE_COUNT } from "@/lib/campaignTypes";
 import { APP_STORE_EXPORT_PRESETS, type AppStoreExportPreset } from "@/lib/appStoreImageSizes";
 import { APP_STORE_EXPORT_HEIGHT, APP_STORE_EXPORT_WIDTH } from "@/lib/appStoreImageSizes";
 import { lintAppStoreSet } from "@/lib/appStoreExportLintClient";
-import { downloadAppStoreZip } from "@/lib/exportAppStoreZip";
+import { downloadAppStoreZip, downloadSingleAppStoreSlide } from "@/lib/exportAppStoreZip";
+import {
+  canExportMockupOnly,
+  downloadMockupOnlyPng,
+} from "@/lib/exportMockupOnlyClient";
 import { scoreGeneratedSlides } from "@/lib/readabilityScore";
 import type { SetCoherenceAudit } from "@/lib/agents/setCoherenceAgent";
 
@@ -76,6 +80,7 @@ export function StoreSetGallery({
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [editingSlideNumber, setEditingSlideNumber] = useState<number | null>(null);
+  const [mockupDownloadError, setMockupDownloadError] = useState<string | null>(null);
   const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
 
   const readability = useMemo(
@@ -122,10 +127,33 @@ export function StoreSetGallery({
     };
   }, [slides, exportPreset, isGenerating]);
 
-  const downloadSlide = (slide: GeneratedSlide) => {
+  const downloadSlide = async (slide: GeneratedSlide) => {
+    try {
+      await downloadSingleAppStoreSlide(slide, exportPreset);
+    } catch (err) {
+      console.error("Individual download failed:", err);
+      const link = document.createElement("a");
+      link.href = slide.dataUrl;
+      link.download = `app-store-slide-${slide.slideNumber}-raw.png`;
+      link.click();
+    }
+  };
+
+  const downloadMockupOnly = async (slide: GeneratedSlide) => {
+    if (!strategy) return;
+    setMockupDownloadError(null);
+    try {
+      await downloadMockupOnlyPng(slide, strategy, screenshotPreviews);
+    } catch (error) {
+      setMockupDownloadError(error instanceof Error ? error.message : "Mockup download failed.");
+    }
+  };
+
+  const downloadBackgroundOnly = (slide: GeneratedSlide) => {
+    if (!slide.backgroundDataUrl) return;
     const link = document.createElement("a");
-    link.href = slide.dataUrl;
-    link.download = `app-store-slide-${slide.slideNumber}-${APP_STORE_EXPORT_WIDTH}x${APP_STORE_EXPORT_HEIGHT}.png`;
+    link.href = slide.backgroundDataUrl;
+    link.download = `slide-${slide.slideNumber}-background.png`;
     link.click();
   };
 
@@ -181,11 +209,13 @@ export function StoreSetGallery({
     }
   };
 
+  const expectedSlides = strategy?.slides.length ?? STORE_SLIDE_COUNT;
+
   const displaySlides =
     isGenerating && slides.length === 0
-      ? Array.from({ length: 5 }, (_, index) => ({
+      ? Array.from({ length: expectedSlides }, (_, index) => ({
           slideNumber: index + 1,
-          role: index === 0 ? ("hero" as const) : index === 4 ? ("cta" as const) : ("feature" as const),
+          role: index === 0 ? ("hero" as const) : index === expectedSlides - 1 ? ("cta" as const) : ("feature" as const),
           headline: progressLabel || "Generating...",
           subheadline: "",
           dataUrl: index === 0 && partialPreviewUrl ? partialPreviewUrl : "",
@@ -193,7 +223,6 @@ export function StoreSetGallery({
         }))
       : slides;
 
-  const expectedSlides = STORE_SLIDE_COUNT;
   const isPartialSet = !isGenerating && slides.length > 0 && slides.length < expectedSlides;
 
   return (
@@ -327,23 +356,32 @@ export function StoreSetGallery({
       ) : null}
 
       <div className="pf-export-grid">
-        {displaySlides.map((slide) => (
-          <StoreSlideExportCard
-            key={`${slide.slideNumber}-${"renderVersion" in slide ? slide.renderVersion ?? 0 : 0}`}
-            slide={slide}
-            aspectRatio={aspectRatio}
-            isGenerating={isGenerating}
-            isRegenerating={regeneratingSlideNumber === slide.slideNumber}
-            isStreaming={isGenerating && !slide.dataUrl && slide.slideNumber === 1}
-            onDownload={downloadSlide}
-            onCopyHeadline={(text) => void copyText(text, "Headline copied")}
-            onRegenerateSlide={onRegenerateSlide}
-            onSelectVariant={onSelectVariant}
-            onOpenLiveEditor={
-              onUpdateSlideFromEditor && strategy ? (slide) => setEditingSlideNumber(slide.slideNumber) : undefined
-            }
-          />
-        ))}
+        {displaySlides.map((slide) => {
+          const plan = strategy?.slides.find((s) => s.slideNumber === slide.slideNumber);
+          const hasMockup = plan ? (plan.screenshotUsage !== "none" || plan.screenshotIndex !== null) : false;
+          return (
+            <StoreSlideExportCard
+              key={`${slide.slideNumber}-${"renderVersion" in slide ? slide.renderVersion ?? 0 : 0}`}
+              slide={slide}
+              aspectRatio={aspectRatio}
+              isGenerating={isGenerating}
+              isRegenerating={regeneratingSlideNumber === slide.slideNumber}
+              isStreaming={isGenerating && !slide.dataUrl && slide.slideNumber === 1}
+              onDownload={downloadSlide}
+              onDownloadMockupOnly={downloadMockupOnly}
+              onDownloadBackgroundOnly={downloadBackgroundOnly}
+              canDownloadMockupOnly={hasMockup}
+              hasMockup={hasMockup}
+              onCopyHeadline={(text) => void copyText(text, "Headline copied")}
+              onRegenerateSlide={onRegenerateSlide}
+              onSelectVariant={onSelectVariant}
+              onOpenLiveEditor={
+                onUpdateSlideFromEditor && strategy ? (slide) => setEditingSlideNumber(slide.slideNumber) : undefined
+              }
+              slideCount={displaySlides.length}
+            />
+          );
+        })}
       </div>
 
       {editingSlide && editingSlidePlan && strategy && onUpdateSlideFromEditor ? (
@@ -372,6 +410,7 @@ export function StoreSetGallery({
       ) : null}
 
       <CopyToast message={copyMessage} onDismiss={clearCopyMessage} />
+      {mockupDownloadError ? <p className="error-message">{mockupDownloadError}</p> : null}
     </section>
   );
 }

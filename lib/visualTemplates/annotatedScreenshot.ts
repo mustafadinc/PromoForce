@@ -13,6 +13,8 @@ export async function renderAnnotatedScreenshot(input: VisualTemplateInput): Pro
     accentColor: input.accentColor,
     layoutStyle: "lifestyle_focus",
     showAppBranding: false,
+    locale: input.locale,
+    fontFamily: input.fontFamily,
   });
 
   const scale = input.width / 1024;
