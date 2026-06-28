@@ -217,6 +217,14 @@ export async function renderAssetDeviceLayer(
   return { buffer, width: raster.width, height: raster.height };
 }
 
+async function loadDeviceOverlay(asset: SceneMockupAsset, width: number, height: number): Promise<Buffer> {
+  const source = await readFile(path.join(process.cwd(), ...asset.deviceOverlayFsPath));
+  return sharp(source)
+    .resize(width, height, { fit: "cover", position: "centre" })
+    .png()
+    .toBuffer();
+}
+
 /** Warp screenshot into a baked lifestyle scene mockup at canvas resolution. */
 export async function renderSceneMockupLayer(
   sceneBackground: Buffer,
@@ -227,10 +235,26 @@ export async function renderSceneMockupLayer(
 ): Promise<Buffer> {
   const quad = sceneScreenQuad(asset, width, height) as unknown as PerspectiveQuad;
   const warped = await warpScreenshotToQuad(screenshot, quad, width, height);
+  const scenePlate = await loadSceneMockupBuffer(asset, width, height);
+  
+  let deviceOverlay: Buffer | null = null;
+  try {
+    deviceOverlay = await loadDeviceOverlay(asset, width, height);
+  } catch (e) {
+    console.warn("[renderSceneMockupLayer] Missing device overlay", e);
+  }
+
+  const composites: sharp.OverlayOptions[] = [
+    { input: scenePlate, top: 0, left: 0 },
+    { input: warped, top: 0, left: 0 },
+  ];
+  if (deviceOverlay) {
+    composites.push({ input: deviceOverlay, top: 0, left: 0 });
+  }
 
   return sharp(sceneBackground)
     .resize(width, height, { fit: "cover", position: "centre" })
-    .composite([{ input: warped, top: 0, left: 0 }])
+    .composite(composites)
     .png()
     .toBuffer();
 }
