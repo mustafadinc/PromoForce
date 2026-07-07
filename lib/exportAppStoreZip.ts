@@ -11,7 +11,7 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function resizeDataUrlToPreset(dataUrl: string, width: number, height: number): Promise<Blob> {
+export async function resizeDataUrlToPreset(dataUrl: string, width: number, height: number): Promise<Blob> {
   const img = await loadImage(dataUrl);
   const canvas = document.createElement("canvas");
   canvas.width = width;

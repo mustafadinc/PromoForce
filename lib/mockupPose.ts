@@ -86,10 +86,16 @@ export function phoneHeightLayoutScale(
   return Math.max(0.78, Math.min(1.28, scale));
 }
 
+export function phoneHeightRatioForMockupScale(scale: MockupScale): number {
+  if (scale === "hero") return 0.72;
+  if (scale === "standard") return 0.62;
+  return 0.52;
+}
+
 /** Max front-face width — raised for product-first centered mockups. */
 export function perspectiveFrontWidthCap(canvasWidth: number, pose: MockupPose): number {
   const ratio =
-    pose.scale === "hero" ? 0.72 : pose.scale === "compact" ? 0.58 : 0.68;
+    pose.scale === "hero" ? 0.76 : pose.scale === "compact" ? 0.58 : 0.7;
   return Math.round(canvasWidth * ratio * mockupPoseScaleMultiplier(pose));
 }
 

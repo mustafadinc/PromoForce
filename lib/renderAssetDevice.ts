@@ -31,6 +31,10 @@ const deviceSourceCache = new Map<MockupAssetId, Promise<Buffer>>();
 const sceneSourceCache = new Map<MockupAssetId, Promise<Buffer>>();
 const rasterCache = new Map<string, Promise<DeviceRaster>>();
 
+function positiveInt(value: number) {
+  return Math.max(1, Math.round(value));
+}
+
 function loadDeviceSource(mockupAssetId: MockupAssetId): Promise<Buffer> {
   const existing = deviceSourceCache.get(mockupAssetId);
   if (existing) return existing;
@@ -48,7 +52,7 @@ export async function loadSceneMockupBuffer(
 ): Promise<Buffer> {
   const source = await loadSceneSource(asset.id);
   return sharp(source)
-    .resize(width, height, { fit: "cover", position: "centre" })
+    .resize(positiveInt(width), positiveInt(height), { fit: "cover", position: "centre" })
     .png()
     .toBuffer();
 }
@@ -188,7 +192,9 @@ export async function renderAssetDeviceLayer(
 ): Promise<AssetDeviceRender> {
   const assetId = getDeviceMockupAsset(mockupAssetId).id;
   const mirrored = assetDeviceMirrored(orientation, assetId);
-  const raster = await getDeviceRaster(deviceW, deviceH, mirrored, assetId);
+  const safeDeviceW = positiveInt(deviceW);
+  const safeDeviceH = positiveInt(deviceH);
+  const raster = await getDeviceRaster(safeDeviceW, safeDeviceH, mirrored, assetId);
 
   const quad = assetScreenQuad(orientation, raster.width, raster.height, 0, 0, assetId) as unknown as PerspectiveQuad;
   const screenFill = await buildScreenFill(screenshot, raster, quad);
@@ -220,7 +226,7 @@ export async function renderAssetDeviceLayer(
 export async function loadSceneDeviceOverlayBuffer(asset: SceneMockupAsset, width: number, height: number): Promise<Buffer> {
   const source = await readFile(path.join(process.cwd(), ...asset.deviceOverlayFsPath));
   return sharp(source)
-    .resize(width, height, { fit: "cover", position: "centre" })
+    .resize(positiveInt(width), positiveInt(height), { fit: "cover", position: "centre" })
     .png()
     .toBuffer();
 }
@@ -233,13 +239,15 @@ export async function renderSceneMockupLayer(
   width: number,
   height: number,
 ): Promise<Buffer> {
-  const quad = sceneScreenQuad(asset, width, height) as unknown as PerspectiveQuad;
-  const warped = await warpScreenshotToQuad(screenshot, quad, width, height);
-  const scenePlate = await loadSceneMockupBuffer(asset, width, height);
+  const outW = positiveInt(width);
+  const outH = positiveInt(height);
+  const quad = sceneScreenQuad(asset, outW, outH) as unknown as PerspectiveQuad;
+  const warped = await warpScreenshotToQuad(screenshot, quad, outW, outH);
+  const scenePlate = await loadSceneMockupBuffer(asset, outW, outH);
   
   let deviceOverlay: Buffer | null = null;
   try {
-    deviceOverlay = await loadSceneDeviceOverlayBuffer(asset, width, height);
+    deviceOverlay = await loadSceneDeviceOverlayBuffer(asset, outW, outH);
   } catch (e) {
     console.warn("[renderSceneMockupLayer] Missing device overlay", e);
   }
@@ -253,7 +261,7 @@ export async function renderSceneMockupLayer(
   }
 
   return sharp(sceneBackground)
-    .resize(width, height, { fit: "cover", position: "centre" })
+    .resize(outW, outH, { fit: "cover", position: "centre" })
     .composite(composites)
     .png()
     .toBuffer();

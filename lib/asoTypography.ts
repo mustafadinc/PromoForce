@@ -37,19 +37,26 @@ export function splitHeadlineParts(
   locale?: LocaleCode,
 ): { verb: string; descriptor: string } {
   const localeDef = getLocaleDefinition(locale);
-
-  if (localeDef.script === "cjk") {
-    const full = headline.trim();
-    return { verb: full, descriptor: "" };
-  }
-
   const verb = headlineVerb?.trim();
   const descriptor = headlineDescriptor?.trim();
 
-  if (verb && descriptor) {
+  if (localeDef.script === "cjk") {
+    // If both verb and descriptor are explicitly provided, preserve the split
+    // so each part renders with its own color and font-size treatment.
+    if (verb && descriptor) {
+      return { verb, descriptor };
+    }
+    const full = [verb, descriptor].filter(Boolean).join("") || headline.trim();
+    return { verb: full, descriptor: "" };
+  }
+
+  if (verb) {
     return localeDef.uppercase
-      ? { verb: verb.toLocaleUpperCase(localeDef.bcp47), descriptor: descriptor.toLocaleUpperCase(localeDef.bcp47) }
-      : { verb, descriptor };
+      ? {
+          verb: verb.toLocaleUpperCase(localeDef.bcp47),
+          descriptor: descriptor ? descriptor.toLocaleUpperCase(localeDef.bcp47) : "",
+        }
+      : { verb, descriptor: descriptor ?? "" };
   }
 
   const words = headline.trim().split(/\s+/).filter(Boolean);
@@ -137,7 +144,8 @@ export function fitMultiLineFontSize(
   let size = sizeMax;
   while (size > sizeMin) {
     const lines = wrapTextToMaxWidth(trimmed, maxWidth, size, 999, locale);
-    if (lines.length <= maxLines) {
+    const widthsFit = lines.every((line) => estimateTextWidth(line, size, locale) <= maxWidth);
+    if (lines.length <= maxLines && widthsFit) {
       return size;
     }
     size -= 2;

@@ -586,6 +586,8 @@ export async function* streamStoreSlideGeneration(input: GenerateStoreSlideInput
         mockupAssetId,
         slideNumber: input.slidePlan?.slideNumber,
         phoneHeightRatio: input.slidePlan?.phoneHeightRatio,
+        layoutOffsets: input.slidePlan?.layoutOffsets,
+        textColors: input.slidePlan?.textColors,
         locale: input.locale,
         socialProof: input.socialProof,
         showSocialProof: input.showSocialProof,

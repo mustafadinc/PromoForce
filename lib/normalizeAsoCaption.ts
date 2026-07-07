@@ -43,6 +43,21 @@ export function normalizeCaptionForSlide(input: {
     if (headline.length > locale.captionMaxChars) {
       headline = headline.slice(0, locale.captionMaxChars).trim();
     }
+
+    // If the AI explicitly provided separate verb + descriptor, preserve the split
+    // so each part gets its own color and font-size treatment.
+    const explicitVerb = (input.headlineVerb || "").trim();
+    const explicitDescriptor = (input.headlineDescriptor || "").trim();
+    if (explicitVerb && explicitDescriptor) {
+      const fullHeadline = `${explicitVerb}${explicitDescriptor}`;
+      return {
+        headline: fullHeadline.slice(0, locale.captionMaxChars),
+        headlineVerb: explicitVerb,
+        headlineDescriptor: explicitDescriptor,
+        subheadline: input.asoBeat === "hook" ? "" : subheadline.slice(0, locale.captionMaxChars * 2),
+      };
+    }
+
     return {
       headline,
       headlineVerb: headline,

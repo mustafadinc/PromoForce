@@ -622,6 +622,8 @@ export function AppSetupForm({
 
         .slice(0, MAX_SCREENSHOTS);
 
+      setSlideCount((count) => Math.max(count, updated.length));
+
 
 
       setScreenshotsByLocale((prev) => ({ ...prev, [locale]: updated }));

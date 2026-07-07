@@ -24,7 +24,6 @@ import { normalizeSlideEdit } from "@/lib/normalizeSlideEdit";
 import { buildSlidePatchForScreenshot } from "@/lib/syncSlideToScreenshot";
 import {
   applyCreativeDirectorDefaults,
-  countUniqueBackgroundGenerations,
   describeBackgroundPlan,
 } from "@/lib/storeCreativeDirector";
 import type { AppProfile } from "@/lib/campaignTypes";
@@ -47,11 +46,13 @@ type StrategyPreviewProps = {
   strategy: StrategyBrief | null;
   appProfile?: AppProfile | null;
   screenshotPreviews: ScreenshotPreview[];
+  customBackgroundsBySlide?: Record<number, string>;
   isGenerating: boolean;
   hasEdits: boolean;
   activeLocale?: LocaleCode;
   locales?: LocaleCode[];
   onLocaleChange?: (locale: LocaleCode) => void;
+  onCustomBackgroundChange?: (slideNumber: number, dataUrl: string | null) => void;
   onStrategyChange: (strategy: StrategyBrief) => void;
   onResetStrategy: () => void;
   onGenerate: (options?: { variantsPerSlide?: number }) => void;
@@ -96,11 +97,13 @@ export function StrategyPreview({
   strategy,
   appProfile,
   screenshotPreviews,
+  customBackgroundsBySlide = {},
   isGenerating,
   hasEdits,
   activeLocale = "en",
   locales = [],
   onLocaleChange,
+  onCustomBackgroundChange,
   onStrategyChange,
   onResetStrategy,
   onGenerate,
@@ -119,8 +122,8 @@ export function StrategyPreview({
       { id: "brief", label: "Campaign setup", subtitle: "Positioning & set mode" },
       ...strategy.slides.map((slide) => ({
         id: `slide-${slide.slideNumber}`,
-        label: storeSlideBeatMeta[slide.asoBeat].label,
-        subtitle: slide.headline.slice(0, 40),
+        label: `Slide ${slide.slideNumber}`,
+        subtitle: `${storeSlideBeatMeta[slide.asoBeat].label} · ${slide.headline.slice(0, 40)}`,
       })),
     ];
   }, [strategy]);
@@ -137,6 +140,8 @@ export function StrategyPreview({
 
   const hasRetakeScreenshots =
     strategy?.screenshotAssessments?.some((assessment) => assessment.rating === "retake") ?? false;
+  const plannedSlideCount = strategy?.slides.length ?? 0;
+  const plannedSlideNumbers = strategy?.slides.map((slide) => slide.slideNumber) ?? [];
 
   const requestGenerate = (options?: { variantsPerSlide?: number }) => {
     const reasons: string[] = [];
@@ -274,7 +279,7 @@ export function StrategyPreview({
               onClick={() => requestGenerate({ variantsPerSlide: 1 })}
               disabled={isGenerating}
             >
-              {isGenerating ? "Generating..." : "Generate 5 Slides"}
+              {isGenerating ? "Generating..." : `Generate ${plannedSlideCount} Slides`}
             </button>
             <button
               className="secondary-action compact-action"
@@ -291,6 +296,7 @@ export function StrategyPreview({
 
       <NarrativeProgressBar
         narrativeArc={isBriefStep ? strategy.narrativeArc : undefined}
+        slides={strategy.slides}
         activeSlideNumber={isBriefStep ? null : activeSlide?.slideNumber ?? null}
         onSelectSlide={goToSlide}
       />
@@ -361,7 +367,7 @@ export function StrategyPreview({
         <div className="strategy-info solid-mode-banner">
           <strong>Solid set mode</strong>
           <p>
-            All 5 slides use your <strong>Brand color</strong> ({strategy.brandColor || strategy.accentColor}) —
+            All {plannedSlideCount} slides use your <strong>Brand color</strong> ({strategy.brandColor || strategy.accentColor}) —
             generated in code (gradient + light grain), not from a fixed color library. Headlines and mockups still
             differ per slide.
           </p>
@@ -381,13 +387,13 @@ export function StrategyPreview({
         </div>
       ) : (
         <p className="strategy-info lifestyle-mode-hint">
-          <strong>Lifestyle mode:</strong> up to {countUniqueBackgroundGenerations(strategy)} unique AI background
-          plates — scenes can be shared across slides to save cost and keep the set cohesive.
+          <strong>Lifestyle mode:</strong> {plannedSlideCount} unique AI background
+          plates — one custom scene per App Store screenshot.
         </p>
       )}
 
       <p className="strategy-note">
-        AI built a 5-slide App Store conversion arc with deliberate background decisions — who appears, which
+        AI built a {plannedSlideCount}-slide App Store conversion arc with deliberate background decisions — who appears, which
         slides share the same scene, and how each layout supports the story. Edit before generating.
       </p>
 
@@ -427,7 +433,7 @@ export function StrategyPreview({
                 <div className="scene-slides-picker">
                   <span className="scene-slides-label">Shared by slides</span>
                   <div className="scene-slide-checks">
-                    {[1, 2, 3, 4, 5].map((slideNum) => (
+                    {plannedSlideNumbers.map((slideNum) => (
                       <label key={slideNum} className="scene-slide-check">
                         <input
                           type="checkbox"
@@ -489,7 +495,7 @@ export function StrategyPreview({
             }}
             disabled={isGenerating}
           >
-            <option value="lifestyle">Lifestyle — AI scenes (2–4)</option>
+            <option value="lifestyle">Lifestyle — AI scenes ({plannedSlideCount})</option>
             <option value="hybrid">Hybrid — slide 1 AI, rest solid</option>
             <option value="solid">Solid — all slides your brand color</option>
           </select>
@@ -511,7 +517,7 @@ export function StrategyPreview({
               }}
               disabled={isGenerating}
             >
-              {[1, 2, 3, 4, 5].map((n) => (
+              {plannedSlideNumbers.map((n) => (
                 <option key={n} value={n}>
                   Slide {n}
                 </option>
@@ -620,8 +626,12 @@ export function StrategyPreview({
               slide={activeSlide}
               strategy={strategy}
               screenshotPreviews={screenshotPreviews}
+              customBackgroundUrl={customBackgroundsBySlide[activeSlide.slideNumber]}
               screenshotCount={screenshotCount}
               isGenerating={isGenerating}
+              onCustomBackgroundChange={(dataUrl) =>
+                onCustomBackgroundChange?.(activeSlide.slideNumber, dataUrl)
+              }
               onUpdateSlide={(patch) => updateSlide(activeSlide.slideNumber, patch)}
               onAssignScene={(sceneId) => assignBackgroundSceneToSlide(activeSlide.slideNumber, sceneId)}
             />

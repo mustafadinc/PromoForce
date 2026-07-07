@@ -2,6 +2,7 @@ import { computeAsoTextLayout } from "@/lib/asoTextLayout";
 import type { LockedTypography, SlideEditorTextBlockId, SlideEditorTextStyles, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
 import { getCompositeLayoutProfile, layoutScale } from "@/lib/compositeLayoutProfile";
 import type { LocaleCode } from "@/lib/locales";
+import { getLocaleDefinition } from "@/lib/locales";
 import { editorFontFamily } from "@/lib/editor/loadEditorFonts";
 import { applyTextBlockStyle } from "@/lib/editor/textBlockStyles";
 
@@ -12,6 +13,7 @@ export type ClientTextSegment = {
   x: number;
   y: number;
   fontSize: number;
+  baseFontSize?: number;
   fill: string;
   align: "center" | "left";
   width?: number;
@@ -48,8 +50,25 @@ export type ClientSlideLayoutInput = {
   };
 };
 
-function buildHeadlineFromParts(verb: string, descriptor: string) {
-  return [verb.trim(), descriptor.trim()].filter(Boolean).join(" ");
+function buildHeadlineFromParts(verb: string, descriptor: string, locale?: LocaleCode) {
+  const parts = [verb.trim(), descriptor.trim()].filter(Boolean);
+  const sep = getLocaleDefinition(locale).script === "cjk" ? "" : " ";
+  return parts.join(sep);
+}
+
+function clampLayoutOffset(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(Math.max(-520, Math.min(520, numeric)));
+}
+
+function planOffsetY(slidePlan: StoreSlidePlan, blockId: SlideEditorTextBlockId) {
+  if (blockId === "verb") return clampLayoutOffset(slidePlan.layoutOffsets?.verbY);
+  if (blockId === "descriptor" || blockId === "accent") {
+    return clampLayoutOffset(slidePlan.layoutOffsets?.descriptorY);
+  }
+  if (blockId === "sub") return clampLayoutOffset(slidePlan.layoutOffsets?.subY);
+  return 0;
 }
 
 export function resolveEditorCopy(input: ClientSlideLayoutInput) {
@@ -57,7 +76,8 @@ export function resolveEditorCopy(input: ClientSlideLayoutInput) {
   const descriptor = input.overrides?.headlineDescriptor ?? input.slidePlan.headlineDescriptor;
   const subheadline = input.overrides?.subheadline ?? input.slidePlan.subheadline;
   const headlineAccent = input.overrides?.headlineAccent ?? input.slidePlan.headlineAccent;
-  const headline = buildHeadlineFromParts(verb, descriptor) || input.slidePlan.headline;
+  const locale = input.locale ?? input.strategy?.locale;
+  const headline = buildHeadlineFromParts(verb, descriptor, locale) || input.slidePlan.headline;
   return { verb, descriptor, subheadline, headlineAccent, headline };
 }
 
@@ -66,11 +86,18 @@ function styleSegment(
   textStyles: SlideEditorTextStyles | undefined,
   accentColor: string,
 ): ClientTextSegment {
-  const styled = applyTextBlockStyle(segment, textStyles?.[segment.blockId], {
+  const style = textStyles?.[segment.blockId];
+  const styled = applyTextBlockStyle(segment, style, {
     gradientEnd: "#38bdf8",
     defaultUseGradient: segment.defaultUseGradient,
   });
-  return { ...segment, ...styled };
+  const fontScale = Math.min(1.4, Math.max(0.55, style?.fontScale ?? 1));
+  return {
+    ...segment,
+    ...styled,
+    baseFontSize: segment.fontSize,
+    fontSize: Math.round(segment.fontSize * fontScale),
+  };
 }
 
 export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTextLayer {
@@ -90,13 +117,14 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
     input.height,
     isCta,
     input.lockedTypography,
-    Boolean(input.slidePlan.showAppBranding && !isCta && profile.format === "app_store"),
+    false,
     input.locale ?? input.strategy.locale,
   );
 
   const anchorX = layout.textAnchorX;
   const headlineSegments: ClientTextSegment[] = [];
   const subSegments: ClientTextSegment[] = [];
+  let actualTextBlockBottom = 0;
   let y = layout.textTopY;
 
   layout.verbLines.forEach((line, index) => {
@@ -107,7 +135,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
           blockId: "verb",
           text: line,
           x: anchorX,
-          y,
+          y: y + planOffsetY(input.slidePlan, "verb"),
           fontSize: layout.verbSize,
           fill: accentColor,
           align: layout.textAnchor === "middle" ? "center" : "left",
@@ -120,6 +148,10 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
         input.textStyles,
         accentColor,
       ),
+    );
+    actualTextBlockBottom = Math.max(
+      actualTextBlockBottom,
+      y + planOffsetY(input.slidePlan, "verb") + layout.verbSize,
     );
     y += Math.round(layout.verbSize * 1.05);
   });
@@ -139,7 +171,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
             blockId: "descriptor",
             text: line,
             x: anchorX,
-            y,
+            y: y + planOffsetY(input.slidePlan, "descriptor"),
             fontSize: layout.descriptorSize,
             fill: "#ffffff",
             align: layout.textAnchor === "middle" ? "center" : "left",
@@ -150,6 +182,10 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
           input.textStyles,
           accentColor,
         ),
+      );
+      actualTextBlockBottom = Math.max(
+        actualTextBlockBottom,
+        y + planOffsetY(input.slidePlan, "descriptor") + layout.descriptorSize,
       );
     } else {
       const before = line.slice(0, idx);
@@ -163,7 +199,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
               blockId: "descriptor",
               text: before,
               x: anchorX,
-              y,
+              y: y + planOffsetY(input.slidePlan, "descriptor"),
               fontSize: layout.descriptorSize,
               fill: "#ffffff",
               align: layout.textAnchor === "middle" ? "center" : "left",
@@ -174,6 +210,10 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
             accentColor,
           ),
         );
+        actualTextBlockBottom = Math.max(
+          actualTextBlockBottom,
+          y + planOffsetY(input.slidePlan, "descriptor") + layout.descriptorSize,
+        );
       }
       if (accent) {
         headlineSegments.push(
@@ -183,7 +223,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
               blockId: "accent",
               text: accent,
               x: anchorX,
-              y,
+              y: y + planOffsetY(input.slidePlan, "accent"),
               fontSize: layout.descriptorSize,
               fill: accentColor,
               align: layout.textAnchor === "middle" ? "center" : "left",
@@ -197,6 +237,10 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
             accentColor,
           ),
         );
+        actualTextBlockBottom = Math.max(
+          actualTextBlockBottom,
+          y + planOffsetY(input.slidePlan, "accent") + layout.descriptorSize,
+        );
       }
       if (after) {
         headlineSegments.push(
@@ -206,7 +250,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
               blockId: "descriptor",
               text: after,
               x: anchorX,
-              y,
+              y: y + planOffsetY(input.slidePlan, "descriptor"),
               fontSize: layout.descriptorSize,
               fill: "#ffffff",
               align: layout.textAnchor === "middle" ? "center" : "left",
@@ -216,6 +260,10 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
             input.textStyles,
             accentColor,
           ),
+        );
+        actualTextBlockBottom = Math.max(
+          actualTextBlockBottom,
+          y + planOffsetY(input.slidePlan, "descriptor") + layout.descriptorSize,
         );
       }
     }
@@ -236,7 +284,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
           blockId: "sub",
           text: line,
           x: anchorX,
-          y: y + index * Math.round(layout.subSize * 1.28),
+          y: y + index * Math.round(layout.subSize * 1.28) + planOffsetY(input.slidePlan, "sub"),
           fontSize: layout.subSize,
           fill: accentColor,
           align: layout.textAnchor === "middle" ? "center" : "left",
@@ -249,11 +297,16 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
         accentColor,
       ),
     );
+    actualTextBlockBottom = Math.max(
+      actualTextBlockBottom,
+      y + index * Math.round(layout.subSize * 1.28) + planOffsetY(input.slidePlan, "sub") + layout.subSize,
+    );
   });
 
   const segments = [...headlineSegments, ...subSegments];
 
-  const captionBandH = Math.min(layout.textBlockBottom + Math.round(24 * scale), Math.round(input.height * 0.34));
+  const textBlockBottom = Math.max(layout.textBlockBottom, actualTextBlockBottom);
+  const captionBandH = Math.min(textBlockBottom + Math.round(24 * scale), Math.round(input.height * 0.34));
   const scrimHeight = Math.max(
     layout.fadeHeight,
     captionBandH + Math.round(32 * scale),
@@ -264,7 +317,7 @@ export function computeClientTextLayer(input: ClientSlideLayoutInput): ClientTex
     headlineSegments,
     subSegments,
     textAnchorX: anchorX,
-    textBlockBottom: layout.textBlockBottom,
+    textBlockBottom,
     scrimHeight,
     accentColor,
     fontFamily,

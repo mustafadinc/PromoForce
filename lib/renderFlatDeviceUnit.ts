@@ -36,7 +36,12 @@ export async function renderFrontDeviceLayer(
   const frameBuf = await getDeviceFrameBuffer(mockupColor, "upright");
   const frame = await sharp(frameBuf).resize(frontW, frontH).png().toBuffer();
   const layout = computePhoneScreenLayout(0, 0, frontW, frontH);
-  const screen = await fitScreenshotToMockupScreen(trimmed, layout.screenW, layout.screenH);
+  const screenBleed = Math.max(2, Math.round(layout.screenW * 0.007));
+  const screen = await fitScreenshotToMockupScreen(
+    trimmed,
+    layout.screenW + screenBleed * 2,
+    layout.screenH + screenBleed * 2,
+  );
 
   const buffer = await sharp({
     create: {
@@ -47,8 +52,8 @@ export async function renderFrontDeviceLayer(
     },
   })
     .composite([
+      { input: screen, left: layout.screenX - screenBleed, top: layout.screenY - screenBleed },
       { input: frame, left: 0, top: 0 },
-      { input: screen, left: layout.screenX, top: layout.screenY },
     ])
     .png()
     .toBuffer();

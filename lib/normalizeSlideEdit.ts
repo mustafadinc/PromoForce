@@ -1,4 +1,6 @@
 import type { AppProfile, ScreenshotUsage, StoreSlidePlan, StrategyBrief } from "@/lib/campaignTypes";
+import { getLocaleDefinition } from "@/lib/locales";
+import { phoneHeightRatioForMockupScale } from "@/lib/mockupPose";
 import {
   buildSlidePatchForScreenshot,
   shouldSyncSlideToScreenshot,
@@ -31,9 +33,32 @@ export function normalizeSlideEdit(
 
   const next = { ...slide, ...mergedPatch };
 
+  if (
+    "headlineVerb" in mergedPatch ||
+    "headlineDescriptor" in mergedPatch
+  ) {
+    const localeDef = getLocaleDefinition(context?.strategy?.locale);
+    const sep = localeDef.script === "cjk" ? "" : " ";
+    const headline = [next.headlineVerb?.trim(), next.headlineDescriptor?.trim()]
+      .filter(Boolean)
+      .join(sep);
+    if (headline) {
+      next.headline = headline;
+    }
+  }
+
+  if ("screenshotUsage" in patch && !("showAppBranding" in patch)) {
+    next.showAppBranding = next.screenshotUsage === "hero_mockup";
+  }
+
+  if (mergedPatch.mockupPose && !("phoneHeightRatio" in mergedPatch)) {
+    next.phoneHeightRatio = phoneHeightRatioForMockupScale(mergedPatch.mockupPose.scale);
+  }
+
   if (next.screenshotUsage === "none" || screenshotCount === 0) {
     next.screenshotIndex = null;
     next.screenshotUsage = "none";
+    next.showAppBranding = false;
   } else if (next.screenshotIndex === null) {
     next.screenshotIndex = 0;
   } else {

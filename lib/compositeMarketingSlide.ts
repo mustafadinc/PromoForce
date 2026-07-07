@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import type { LockedTypography, SlideLayoutStyle } from "@/lib/campaignTypes";
+import type { LockedTypography, SlideLayoutStyle, StoreSlidePlan } from "@/lib/campaignTypes";
 import { getAsoFontFaceSvgDef, getSvgFontFamily } from "@/lib/asoFontEmbed";
 import { computeAsoTextLayout, computeLockedTypographyFromHeadline, getBrandingMetrics } from "@/lib/asoTextLayout";
 import {
@@ -36,6 +36,7 @@ import { nudgePerspectiveStackX } from "@/lib/perspectiveDeviceWarp";
 import { renderPerspectiveDeviceLayers } from "@/lib/renderPerspectiveDevice";
 import {
   applyMockupPlacementX,
+  phoneHeightLayoutScale,
   mockupPoseScaleMultiplier,
   perspectiveFrontWidthCap,
   resolveCompositeMockupPose,
@@ -58,7 +59,7 @@ import { renderAssetDeviceLayer, renderSceneMockupLayer } from "@/lib/renderAsse
 export { parseImageSize };
 export type { LockedTypography };
 
-const MIN_TEXT_DEVICE_GAP = 64;
+const MIN_TEXT_DEVICE_GAP = 48;
 /** Minimum gap above feature pills / canvas bottom so the full device chin stays visible. */
 const BOTTOM_SAFE_MARGIN = 64;
 /** Extra clearance so the bottom bezel + rounded chin are never clipped by the canvas edge. */
@@ -110,6 +111,8 @@ type CompositeMarketingSlideInput = {
   mockupAssetId?: MockupAssetId;
   slideNumber?: number;
   phoneHeightRatio?: number;
+  layoutOffsets?: StoreSlidePlan["layoutOffsets"];
+  textColors?: StoreSlidePlan["textColors"];
   locale?: LocaleCode;
   socialProof?: SocialProofInput;
   showSocialProof?: boolean;
@@ -117,6 +120,35 @@ type CompositeMarketingSlideInput = {
   asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
   fontFamily?: string;
 };
+
+function clampLayoutOffset(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(Math.max(-520, Math.min(520, numeric)));
+}
+
+function offsetPhoneLayoutY(layout: PhoneLayout, offsetY: number, canvasHeight: number): PhoneLayout {
+  if (!offsetY) return layout;
+  const minY = 0;
+  const maxY = Math.max(minY, canvasHeight - layout.phoneH);
+  const phoneY = Math.max(minY, Math.min(maxY, layout.phoneY + offsetY));
+  const deltaY = phoneY - layout.phoneY;
+  const screenQuad = layout.screenQuad
+    ? {
+        tl: { ...layout.screenQuad.tl, y: layout.screenQuad.tl.y + deltaY },
+        tr: { ...layout.screenQuad.tr, y: layout.screenQuad.tr.y + deltaY },
+        br: { ...layout.screenQuad.br, y: layout.screenQuad.br.y + deltaY },
+        bl: { ...layout.screenQuad.bl, y: layout.screenQuad.bl.y + deltaY },
+      }
+    : undefined;
+
+  return {
+    ...layout,
+    phoneY,
+    screenY: layout.screenY + deltaY,
+    screenQuad,
+  };
+}
 
 type PhoneLayout = {
   phoneX: number;
@@ -180,6 +212,7 @@ function getAssetPhoneLayout(
   profile: CompositeLayoutProfile,
   mockupPose: MockupPose,
   mockupAssetId?: MockupAssetId | null,
+  phoneHeightRatio?: number,
 ): PhoneLayout {
   const scale = layoutScale(width, height, profile);
   const sizeMult = mockupPoseScaleMultiplier(mockupPose);
@@ -194,6 +227,11 @@ function getAssetPhoneLayout(
   let targetDeviceW = Math.round(width * profile.phoneWidthRatio * sizeMult);
   const capW = perspectiveFrontWidthCap(width, mockupPose);
   if (targetDeviceW > capW) targetDeviceW = capW;
+  if (phoneHeightRatio && phoneHeightRatio > 0) {
+    const computedH = Math.round(targetDeviceW * ASSET_DEVICE_ASPECT);
+    targetDeviceW = Math.round(targetDeviceW * phoneHeightLayoutScale(phoneHeightRatio, height, computedH));
+    if (targetDeviceW > capW) targetDeviceW = capW;
+  }
 
   let topReserve: number;
   let bottomMargin: number;
@@ -268,7 +306,7 @@ function getPhoneLayout(
 ): PhoneLayout {
   const layoutPose = resolveLayoutMockupPose(mockupPose);
   if (usesAssetMockup(layoutPose.orientation, mockupAssetId)) {
-    return getAssetPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, layoutPose, mockupAssetId);
+    return getAssetPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, layoutPose, mockupAssetId, phoneHeightRatio);
   }
 
   const scale = layoutScale(width, height, profile);
@@ -351,6 +389,17 @@ function getPhoneLayout(
   }
 
   let phoneH = Math.floor(phoneW * FRAME_ASPECT);
+  if (phoneHeightRatio && phoneHeightRatio > 0) {
+    const ratioScale = phoneHeightLayoutScale(phoneHeightRatio, height, phoneH);
+    phoneW = Math.floor(phoneW * ratioScale);
+    if (usesPerspectiveMockup(layoutPose.orientation)) {
+      const capW = perspectiveFrontWidthCap(width, layoutPose);
+      if (phoneW > capW) {
+        phoneW = capW;
+      }
+    }
+    phoneH = Math.floor(phoneW * FRAME_ASPECT);
+  }
   if (availableH > 0 && phoneH > availableH) {
     phoneH = availableH;
     phoneW = Math.floor(phoneH / FRAME_ASPECT);
@@ -399,6 +448,15 @@ async function fitScreenshotToScreen(screenshot: Buffer, layout: PhoneLayout) {
   if (layout.screenQuad) {
     return rotated;
   }
+  if (!layout.assetDevice && layout.mockupPose.orientation === "upright") {
+    const screenBleed = Math.max(2, Math.round(layout.screenW * 0.007));
+    return resizeScreenshotToScreenWidth(
+      rotated,
+      layout.screenW + screenBleed * 2,
+      layout.screenH + screenBleed * 2,
+    );
+  }
+
   return resizeScreenshotToScreenWidth(rotated, layout.screenW, layout.screenH);
 }
 
@@ -409,8 +467,9 @@ function renderGradientLine(
   fontSize: number,
   fontWeight: number,
   textAnchor: "middle" | "start",
+  fill = "url(#accentGrad)",
 ): string {
-  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="url(#accentGrad)" letter-spacing="-3"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="${fill}" letter-spacing="0"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
 }
 
 function renderAccentInLine(
@@ -424,19 +483,19 @@ function renderAccentInLine(
 ): string {
   const trimmedAccent = accentPhrase.trim();
   if (!trimmedAccent) {
-    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="-2"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="0"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const idx = line.toLowerCase().indexOf(trimmedAccent.toLowerCase());
   if (idx === -1) {
-    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="-2"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
+    return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" fill="#ffffff" letter-spacing="0"><tspan x="${anchorX}" y="${y}">${escapeXml(line)}</tspan></text>`;
   }
 
   const before = line.slice(0, idx);
   const accent = line.slice(idx, idx + trimmedAccent.length);
   const after = line.slice(idx + trimmedAccent.length);
 
-  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" letter-spacing="-2">
+  return `<text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${ASO_SVG_FONT_FAMILY}" font-weight="${fontWeight}" font-size="${fontSize}" letter-spacing="0">
     <tspan x="${anchorX}" y="${y}" fill="#ffffff">${escapeXml(before)}</tspan><tspan fill="url(#accentGrad)">${escapeXml(accent)}</tspan><tspan fill="#ffffff">${escapeXml(after)}</tspan>
   </text>`;
 }
@@ -568,6 +627,8 @@ async function buildTextOverlaySvg(input: {
   asoBeat?: import("@/lib/campaignTypes").StoreSlideBeat;
   maxTextBlockHeightRatio?: number;
   fontFamily?: string;
+  layoutOffsets?: StoreSlidePlan["layoutOffsets"];
+  textColors?: StoreSlidePlan["textColors"];
 }) {
   const {
     headline,
@@ -591,13 +652,15 @@ async function buildTextOverlaySvg(input: {
     asoBeat,
     maxTextBlockHeightRatio,
     fontFamily: customFont,
+    layoutOffsets,
+    textColors,
   } = input;
 
   const scale = canvasScale(width, height);
   const profile = getCompositeLayoutProfile(width, height);
   const fontFamily = getSvgFontFamily(locale, customFont);
   const fontFaceDef = await getAsoFontFaceSvgDef(locale, customFont);
-  const useBranding = Boolean(showAppBranding && appName && !isCta && profile.format === "app_store");
+  const useBranding = false;
   const effectiveSubheadline = omitSubheadline ? "" : subheadline;
   const layout = computeAsoTextLayout(
     headline,
@@ -626,11 +689,30 @@ async function buildTextOverlaySvg(input: {
 
   const anchorX = layout.textAnchorX;
   const textAnchor = layout.textAnchor;
+  const actionColors = textColors?.header;
+  const benefitColors = textColors?.benefit ?? textColors?.header;
+  const subheaderColors = textColors?.subheader;
+  const hasBenefitColorOverride = Boolean(benefitColors);
+  const actionStart = actionColors?.start || accentColor;
+  const actionEnd = actionColors?.end || "#38bdf8";
+  const actionFill = actionColors?.useGradient === false ? actionStart : "url(#actionGrad)";
+  const benefitStart = benefitColors?.start || "#f1f5f9";
+  const benefitEnd = benefitColors?.end || "#45e0c0";
+  const benefitFill = benefitColors?.useGradient ? "url(#benefitGrad)" : benefitStart;
+  const subheaderStart = subheaderColors?.start || "#f1f5f9";
+  const subheaderEnd = subheaderColors?.end || "#cbd5e1";
+  const subheaderFill = subheaderColors?.useGradient ? "url(#subheaderGrad)" : subheaderStart;
+  const verbOffsetY = clampLayoutOffset(layoutOffsets?.verbY);
+  const descriptorOffsetY = clampLayoutOffset(layoutOffsets?.descriptorY);
+  const subOffsetY = clampLayoutOffset(layoutOffsets?.subY);
+  let actualTextBlockBottom = 0;
   let y = layout.textTopY;
 
   const verbElements = layout.verbLines
     .map((line) => {
-      const el = renderGradientLine(line, anchorX, y, layout.verbSize, 900, textAnchor);
+      const lineY = y + verbOffsetY;
+      actualTextBlockBottom = Math.max(actualTextBlockBottom, lineY + layout.verbSize);
+      const el = renderGradientLine(line, anchorX, lineY, layout.verbSize, 900, textAnchor, actionFill);
       y += Math.round(layout.verbSize * 1.05);
       return el;
     })
@@ -647,15 +729,19 @@ async function buildTextOverlaySvg(input: {
 
   const descriptorElements = layout.descriptorLines
     .map((line) => {
-      const el = renderAccentInLine(
-        line,
-        descriptorAccent,
-        anchorX,
-        y,
-        layout.descriptorSize,
-        900,
-        textAnchor,
-      );
+      const lineY = y + descriptorOffsetY;
+      actualTextBlockBottom = Math.max(actualTextBlockBottom, lineY + layout.descriptorSize);
+      const el = hasBenefitColorOverride
+        ? renderGradientLine(line, anchorX, lineY, layout.descriptorSize, 900, textAnchor, benefitFill)
+        : renderAccentInLine(
+            line,
+            descriptorAccent,
+            anchorX,
+            lineY,
+            layout.descriptorSize,
+            900,
+            textAnchor,
+          );
       y += Math.round(layout.descriptorSize * 1.15);
       return el;
     })
@@ -669,12 +755,14 @@ async function buildTextOverlaySvg(input: {
 
   const subTspans = layout.subLines
     .map((line, index) => {
-      const lineY = y + index * Math.round(layout.subSize * 1.28);
+      const lineY = y + index * Math.round(layout.subSize * 1.28) + subOffsetY;
+      actualTextBlockBottom = Math.max(actualTextBlockBottom, lineY + layout.subSize);
       return `<tspan x="${anchorX}" y="${lineY}">${escapeXml(line)}</tspan>`;
     })
     .join("");
 
-  const captionBandH = Math.min(layout.textBlockBottom + Math.round(24 * scale), Math.round(height * 0.34));
+  const textBlockBottom = Math.max(layout.textBlockBottom, actualTextBlockBottom);
+  const captionBandH = Math.min(textBlockBottom + Math.round(24 * scale), Math.round(height * 0.34));
   const scrimHeight = Math.max(layout.fadeHeight, captionBandH + Math.round(32 * scale));
 
   const socialProofMarkup =
@@ -690,6 +778,18 @@ async function buildTextOverlaySvg(input: {
     <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="${accentColor}"/>
       <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="actionGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="${actionStart}"/>
+      <stop offset="100%" stop-color="${actionEnd}"/>
+    </linearGradient>
+    <linearGradient id="benefitGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="${benefitStart}"/>
+      <stop offset="100%" stop-color="${benefitEnd}"/>
+    </linearGradient>
+    <linearGradient id="subheaderGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="${subheaderStart}"/>
+      <stop offset="100%" stop-color="${subheaderEnd}"/>
     </linearGradient>
     <linearGradient id="textFade" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#000000" stop-opacity="${isCta ? "0.62" : "0.58"}"/>
@@ -711,11 +811,11 @@ async function buildTextOverlaySvg(input: {
   ${verbElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   ${descriptorElements.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   </g>
-  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${fontFamily}" font-weight="700" font-size="${layout.subSize}" fill="#f1f5f9" opacity="0.95">${subTspans}</text>
+  <text filter="url(#textShadow)" text-anchor="${textAnchor}" font-family="${fontFamily}" font-weight="700" font-size="${layout.subSize}" fill="${subheaderFill}" opacity="0.95">${subTspans}</text>
   ${featurePills.markup.replaceAll(ASO_SVG_FONT_FAMILY, fontFamily)}
   ${socialProofMarkup}
 </svg>`),
-    textBlockBottom: layout.textBlockBottom,
+    textBlockBottom,
   };
 }
 
@@ -757,8 +857,8 @@ async function buildPhoneStackLayer(
     const device = await renderAssetDeviceLayer(
       screenBuffer,
       orientation,
-      layout.phoneW,
-      layout.phoneH,
+      Math.round(layout.phoneW),
+      Math.round(layout.phoneH),
       mockupAssetId,
     );
 
@@ -772,7 +872,7 @@ async function buildPhoneStackLayer(
     })
       .composite([
         { input: phoneGlow, top: 0, left: 0 },
-        { input: device.buffer, top: layout.phoneY, left: layout.phoneX },
+        { input: device.buffer, top: Math.round(layout.phoneY), left: Math.round(layout.phoneX) },
       ])
       .png()
       .toBuffer();
@@ -798,8 +898,8 @@ async function buildPhoneStackLayer(
     })
       .composite([
         { input: phoneGlow, top: 0, left: 0 },
-        { input: device.screen.buffer, top: device.screen.top, left: device.screen.left },
-        { input: device.frame.buffer, top: device.frame.top, left: device.frame.left },
+        { input: device.screen.buffer, top: Math.round(device.screen.top), left: Math.round(device.screen.left) },
+        { input: device.frame.buffer, top: Math.round(device.frame.top), left: Math.round(device.frame.left) },
       ])
       .png()
       .toBuffer();
@@ -807,9 +907,15 @@ async function buildPhoneStackLayer(
 
   const frameBuffer = await getDeviceFrameBuffer(mockupColor, "upright");
   const resizedFrame = await sharp(frameBuffer)
-    .resize(layout.frontW, layout.phoneH, { fit: "fill" })
+    .resize(Math.max(1, Math.round(layout.frontW)), Math.max(1, Math.round(layout.phoneH)), { fit: "fill" })
     .png()
     .toBuffer();
+
+  const screenMeta = await sharp(screenBuffer).metadata();
+  const screenW = screenMeta.width ?? layout.screenW;
+  const screenH = screenMeta.height ?? layout.screenH;
+  const screenLeft = Math.round(layout.screenX - Math.max(0, screenW - layout.screenW) / 2);
+  const screenTop = Math.round(layout.screenY - Math.max(0, screenH - layout.screenH) / 2);
 
   const screenLayer = await sharp({
     create: {
@@ -819,7 +925,7 @@ async function buildPhoneStackLayer(
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
   })
-    .composite([{ input: screenBuffer, top: layout.screenY, left: layout.screenX }])
+    .composite([{ input: screenBuffer, top: screenTop, left: screenLeft }])
     .png()
     .toBuffer();
 
@@ -834,7 +940,7 @@ async function buildPhoneStackLayer(
     .composite([
       { input: phoneGlow, top: 0, left: 0 },
       { input: screenLayer, top: 0, left: 0 },
-      { input: resizedFrame, top: layout.phoneY, left: layout.phoneX },
+      { input: resizedFrame, top: Math.round(layout.phoneY), left: Math.round(layout.phoneX) },
     ])
     .png()
     .toBuffer();
@@ -897,7 +1003,7 @@ async function compositeSceneMockupFrame(
   });
 
   return sharp(base)
-    .composite([{ input: sceneLayer, top: placement.top, left: placement.left }])
+    .composite([{ input: sceneLayer, top: Math.round(placement.top), left: Math.round(placement.left) }])
     .png()
     .toBuffer();
 }
@@ -924,6 +1030,8 @@ export async function compositeMarketingSlide({
   mockupAssetId,
   slideNumber,
   phoneHeightRatio,
+  layoutOffsets,
+  textColors,
   locale,
   socialProof,
   showSocialProof = false,
@@ -941,7 +1049,7 @@ export async function compositeMarketingSlide({
     featureHighlights.length >= 2 &&
     !isCta &&
     !!screenshot;
-  const reserveBottom = hasPills ? featurePillReserveHeight(width, height) : 0;
+  const reserveBottom = hasPills && !phoneHeightRatio ? featurePillReserveHeight(width, height) : 0;
 
   const textOnly = isCta || !screenshot;
   const { svg: textOverlaySvg, textBlockBottom } = await buildTextOverlaySvg({
@@ -965,6 +1073,8 @@ export async function compositeMarketingSlide({
     omitSubheadline,
     asoBeat,
     fontFamily,
+    layoutOffsets,
+    textColors,
   });
 
   const textOverlay = await sharp(textOverlaySvg).png().toBuffer();
@@ -1001,7 +1111,11 @@ export async function compositeMarketingSlide({
   }
 
   const screenshotBuffer = await sharp(screenshot).rotate().png().toBuffer();
-  const layout = getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose, mockupAssetId, phoneHeightRatio);
+  const layout = offsetPhoneLayoutY(
+    getPhoneLayout(width, height, textBlockBottom, reserveBottom, profile, mockupPose, mockupAssetId, phoneHeightRatio),
+    clampLayoutOffset(layoutOffsets?.mockupY),
+    height,
+  );
   const screenBuffer = await fitScreenshotToScreen(screenshotBuffer, layout);
   const withDevice = await compositeDeviceFrame(
     base,

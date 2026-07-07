@@ -60,7 +60,7 @@ export function SetOverviewPanel({
       <div className="pf-set-overview-header">
         <h4 className="pf-form-section-title">Set overview</h4>
         <p className="pf-form-section-hint">
-          Five-slide ASO story — each card shows the screen assigned to that slide. Click to edit.
+          {slides.length}-slide ASO story — each card shows the screen assigned to that slide. Click to edit.
         </p>
       </div>
       <div className="pf-set-overview-grid">

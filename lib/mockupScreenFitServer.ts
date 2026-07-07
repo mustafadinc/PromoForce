@@ -18,6 +18,7 @@ export async function fitScreenshotToMockupScreen(
   screenshot: Buffer,
   screenW: number,
   screenH: number,
+  options: { clipToScreen?: boolean } = {},
 ): Promise<Buffer> {
   const fit = resolveMockupScreenFit(screenW, screenH);
   const meta = await sharp(screenshot).metadata();
@@ -48,6 +49,10 @@ export async function fitScreenshotToMockupScreen(
     .composite([{ input: resized, top: Math.round(destY), left: Math.round(destX) }])
     .png()
     .toBuffer();
+
+  if (options.clipToScreen === false) {
+    return canvas;
+  }
 
   return clipToRoundedScreen(canvas, screenW, screenH, Math.round(fit.radius));
 }

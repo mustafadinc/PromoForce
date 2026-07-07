@@ -57,6 +57,7 @@ export async function drawSceneMockupPreview(
 
   try {
     const sceneImg = await loadPreviewImage(asset.src);
+    octx.drawImage(sceneImg, 0, 0, renderW, renderH);
     const sceneLayer = document.createElement("canvas");
     sceneLayer.width = renderW;
     sceneLayer.height = renderH;

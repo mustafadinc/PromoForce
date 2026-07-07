@@ -33,9 +33,9 @@ import { SLIDE_EDITOR_STATE_VERSION } from "@/lib/campaignTypes";
 export const BASE_DEVICE_RENDER_WIDTH = 420;
 
 const FRAME_ASPECT = METALLIC_FRAME_H / METALLIC_FRAME_W;
-const MIN_TEXT_DEVICE_GAP = 64;
-const BOTTOM_SAFE_MARGIN = 48;
-const PHONE_CHIN_CLEARANCE = -Math.round(2784 * 0.04);
+const MIN_TEXT_DEVICE_GAP = 48;
+const BOTTOM_SAFE_MARGIN = 64;
+const PHONE_CHIN_CLEARANCE = 28;
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -105,8 +105,8 @@ async function buildUprightDeviceCanvas(
   const ctx = canvas.getContext("2d");
   if (!ctx) return { canvas, width: frontW, height: frontH };
 
-  ctx.drawImage(frameImg, 0, 0, frontW, frontH);
   drawFittedScreen(ctx, shotImg, layout.screenX, layout.screenY, layout.screenW, layout.screenH);
+  ctx.drawImage(frameImg, 0, 0, frontW, frontH);
   return { canvas, width: frontW, height: frontH };
 }
 
@@ -179,6 +179,7 @@ export function computeDefaultDeviceState(
   textBlockBottom: number,
   frameColor?: string,
   mockupAssetId?: MockupAssetId | null,
+  phoneHeightRatio?: number,
 ): SlideEditorDeviceState {
   const profile = getCompositeLayoutProfile(width, height);
   const scale = layoutScale(width, height, profile);
@@ -198,10 +199,16 @@ export function computeDefaultDeviceState(
   let phoneH = Math.round(phoneW * deviceAspect);
   const chinClearance = Math.round(PHONE_CHIN_CLEARANCE * scale);
   const bottomMargin = Math.max(Math.round(BOTTOM_SAFE_MARGIN * scale), 0) + chinClearance;
-  const maxTextBottom = Math.round(height * profile.maxTextBlockHeightRatio);
-  const topBound = maxTextBottom + MIN_TEXT_DEVICE_GAP;
+  const topBound = textBlockBottom + Math.round(MIN_TEXT_DEVICE_GAP * scale);
   const bottomBound = height - bottomMargin;
   const availableH = Math.max(0, bottomBound - topBound);
+
+  if (phoneHeightRatio && phoneHeightRatio > 0) {
+    const targetH = height * phoneHeightRatio;
+    const ratioScale = Math.max(0.78, Math.min(1.28, targetH / Math.max(1, phoneH)));
+    phoneW = Math.round(phoneW * ratioScale);
+    phoneH = Math.round(phoneW * deviceAspect);
+  }
 
   if (availableH > 0 && phoneH > availableH) {
     phoneH = availableH;
@@ -270,6 +277,7 @@ export function createDefaultEditorState(input: {
   textBlockBottom: number;
   frameColor?: string;
   mockupAssetId?: MockupAssetId | null;
+  phoneHeightRatio?: number;
 }): SlideEditorState {
   return {
     version: SLIDE_EDITOR_STATE_VERSION,
@@ -280,6 +288,7 @@ export function createDefaultEditorState(input: {
       input.textBlockBottom,
       input.frameColor,
       input.mockupAssetId,
+      input.phoneHeightRatio,
     ),
     hiddenLayers: {},
     textStyles: {},

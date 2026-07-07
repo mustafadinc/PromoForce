@@ -45,6 +45,12 @@ function parseSocialProof(formData: FormData): SocialProofInput | undefined {
   };
 }
 
+function parseSlideCount(formData: FormData): number | undefined {
+  const raw = Number.parseInt(String(formData.get("slideCount") || ""), 10);
+  if (!Number.isFinite(raw)) return undefined;
+  return Math.min(MAX_SCREENSHOTS, Math.max(1, raw));
+}
+
 export function parseAppProfile(formData: FormData): AppProfile {
   const localesRaw = formData.get("locales");
   return {
@@ -55,6 +61,7 @@ export function parseAppProfile(formData: FormData): AppProfile {
     appTitle: String(formData.get("appTitle") || "").trim() || undefined,
     appSubtitle: String(formData.get("appSubtitle") || "").trim() || undefined,
     keywords: String(formData.get("keywords") || "").trim() || undefined,
+    slideCount: parseSlideCount(formData),
     locales: parseLocalesInput(localesRaw),
     socialProof: parseSocialProof(formData),
   };

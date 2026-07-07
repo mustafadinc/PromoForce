@@ -1,4 +1,4 @@
-import type { AppProfile, BackgroundScene, StrategyBrief } from "@/lib/campaignTypes";
+import type { AppProfile, BackgroundScene, SetMode, StrategyBrief } from "@/lib/campaignTypes";
 import { buildSolidBackgroundScene } from "@/lib/storeCreativeDirector";
 import { backgroundPromptFromVisualPlan, planVisualSet } from "@/lib/visualArtDirector/planVisualSet";
 import type { VisualBackgroundStyle } from "@/lib/visualArtDirector/types";
@@ -33,7 +33,10 @@ function buildVisualBackgroundScenes(brief: StrategyBrief, profile: AppProfile):
   const sceneMap = new Map<string, BackgroundScene>();
 
   for (const slidePlan of visualPlan.slides) {
-    const id = STYLE_SCENE_ID[slidePlan.backgroundStyle] ?? `vad-slide-${slidePlan.slideNumber}`;
+    const id =
+      brief.setMode === "lifestyle"
+        ? `vad-slide-${slidePlan.slideNumber}-${slidePlan.backgroundStyle}`
+        : STYLE_SCENE_ID[slidePlan.backgroundStyle] ?? `vad-slide-${slidePlan.slideNumber}`;
     if (sceneMap.has(id)) {
       const existing = sceneMap.get(id)!;
       if (!existing.sharedBySlides.includes(slidePlan.slideNumber)) {
@@ -69,16 +72,45 @@ function buildVisualBackgroundScenes(brief: StrategyBrief, profile: AppProfile):
 }
 
 export function applyVisualPlan(brief: StrategyBrief, profile: AppProfile): StrategyBrief {
-  const visualCompositionPlan = planVisualSet({
+  const plannedVisualCompositionPlan = planVisualSet({
     brief,
     intelligence: brief.screenshotIntelligence,
     colorProfile: brief.colorProfile,
   });
+  const requestedSetMode: SetMode = brief.setMode || plannedVisualCompositionPlan.setMode;
+  const styleAnchorSlide = brief.styleAnchorSlide || 1;
+  const brandColor = brief.brandColor || brief.accentColor;
+
+  const visualCompositionPlan = {
+    ...plannedVisualCompositionPlan,
+    setMode: requestedSetMode,
+    slides: plannedVisualCompositionPlan.slides.map((plan) => {
+      const useSolid =
+        requestedSetMode === "solid" ||
+        (requestedSetMode === "hybrid" && plan.slideNumber !== styleAnchorSlide);
+      if (!useSolid) {
+        return {
+          ...plan,
+          setMode: requestedSetMode === "hybrid" ? ("lifestyle" as const) : requestedSetMode,
+        };
+      }
+
+      return {
+        ...plan,
+        setMode: requestedSetMode === "hybrid" ? ("solid" as const) : requestedSetMode,
+        backgroundTreatment: "abstract_brand" as const,
+        backgroundStyle: "solid_brand_accent" as const,
+        rationale: [
+          `Solid backdrop (${brandColor}) from your brand color — generated in code for set cohesion.`,
+        ],
+      };
+    }),
+  };
 
   const withPlan: StrategyBrief = {
     ...brief,
     visualCompositionPlan,
-    setMode: visualCompositionPlan.setMode,
+    setMode: requestedSetMode,
     designSystem: `${brief.designSystem} Visual art direction: product-first mockups, brand accent as highlight (not flat monochrome), set variety score ${visualCompositionPlan.setVarietyScore}/100.`,
   };
 

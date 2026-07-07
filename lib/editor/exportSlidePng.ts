@@ -24,11 +24,39 @@ export function exportSlidePngFromStage(
       APP_STORE_EXPORT_HEIGHT / APP_STORE_GENERATION_HEIGHT,
     );
 
-  return stage.toDataURL({
-    pixelRatio,
-    mimeType: options.mimeType ?? "image/png",
-    quality: options.quality ?? 1,
-  });
+  const original = {
+    width: stage.width(),
+    height: stage.height(),
+    scaleX: stage.scaleX(),
+    scaleY: stage.scaleY(),
+  };
+  const shouldNormalize =
+    original.width !== APP_STORE_GENERATION_WIDTH ||
+    original.height !== APP_STORE_GENERATION_HEIGHT ||
+    original.scaleX !== 1 ||
+    original.scaleY !== 1;
+
+  try {
+    if (shouldNormalize) {
+      stage.width(APP_STORE_GENERATION_WIDTH);
+      stage.height(APP_STORE_GENERATION_HEIGHT);
+      stage.scale({ x: 1, y: 1 });
+      stage.batchDraw();
+    }
+
+    return stage.toDataURL({
+      pixelRatio,
+      mimeType: options.mimeType ?? "image/png",
+      quality: options.quality ?? 1,
+    });
+  } finally {
+    if (shouldNormalize) {
+      stage.width(original.width);
+      stage.height(original.height);
+      stage.scale({ x: original.scaleX, y: original.scaleY });
+      stage.batchDraw();
+    }
+  }
 }
 
 export function downloadDataUrl(dataUrl: string, filename: string) {

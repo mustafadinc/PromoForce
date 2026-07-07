@@ -369,6 +369,10 @@ export function assignUniqueScreenshots(
   });
 }
 
-export function normalizeStoreSlideBeat(_value: unknown, slideNumber: number): StoreSlideBeat {
-  return getBeatForSlide(slideNumber);
+export function normalizeStoreSlideBeat(
+  _value: unknown,
+  slideNumber: number,
+  slideCount?: number,
+): StoreSlideBeat {
+  return getBeatForSlide(slideNumber, slideCount);
 }

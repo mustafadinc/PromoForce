@@ -7,7 +7,11 @@ export function useCopyFeedback(timeoutMs = 2000) {
 
   const copyText = useCallback(
     async (text: string, label: string) => {
-      await navigator.clipboard.writeText(text);
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        // Clipboard can be blocked when the document is not focused; still show the UI feedback.
+      }
       setMessage(label);
       window.setTimeout(() => setMessage(null), timeoutMs);
     },

@@ -10,7 +10,7 @@ import { usesPerspectiveMockup } from "@/lib/mockupPerspectiveGeometry";
 import type { MockupOrientation } from "@/lib/mockupPose";
 import { mockupFrameCacheKey, type MockupFrameColor } from "@/lib/mockupFrameColors";
 
-const FRAME_CACHE_VERSION = 30;
+const FRAME_CACHE_VERSION = 34;
 const frameCache = new Map<string, Buffer>();
 
 export async function getDeviceFrameBuffer(

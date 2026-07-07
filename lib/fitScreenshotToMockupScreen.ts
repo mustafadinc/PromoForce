@@ -6,9 +6,10 @@ export async function resizeScreenshotToScreenWidth(
   screenshot: Buffer,
   screenW: number,
   screenH: number,
+  options?: { clipToScreen?: boolean },
 ): Promise<Buffer> {
   const trimmed = await trimVerticalScreenshotMargins(screenshot);
-  return fitScreenshotToMockupScreen(trimmed, screenW, screenH);
+  return fitScreenshotToMockupScreen(trimmed, screenW, screenH, options);
 }
 
 export async function trimVerticalScreenshotMargins(buffer: Buffer): Promise<Buffer> {

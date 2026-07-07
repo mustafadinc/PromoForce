@@ -209,6 +209,34 @@ export type StoreSlidePlan = {
   headline: string;
   headlineVerb: string;
   headlineDescriptor: string;
+  typographyScales?: {
+    verb?: number;
+    descriptor?: number;
+    sub?: number;
+  };
+  layoutOffsets?: {
+    mockupY?: number;
+    verbY?: number;
+    descriptorY?: number;
+    subY?: number;
+  };
+  textColors?: {
+    header?: {
+      useGradient?: boolean;
+      start?: string;
+      end?: string;
+    };
+    benefit?: {
+      useGradient?: boolean;
+      start?: string;
+      end?: string;
+    };
+    subheader?: {
+      useGradient?: boolean;
+      start?: string;
+      end?: string;
+    };
+  };
   subheadline: string;
   screenshotIndex: number | null;
   screenshotUsage: ScreenshotUsage;
@@ -354,6 +382,7 @@ export type SlideEditorTextBlockId = "verb" | "descriptor" | "accent" | "sub" | 
 export type SlideEditorTextBlockStyle = {
   offsetX?: number;
   offsetY?: number;
+  fontScale?: number;
   color?: string;
   gradientEnd?: string;
   useGradient?: boolean;
@@ -407,7 +436,7 @@ export type SlideEditorState = {
   hiddenLayers?: SlideEditorHiddenLayers;
 };
 
-export const SLIDE_EDITOR_STATE_VERSION = 4;
+export const SLIDE_EDITOR_STATE_VERSION = 5;
 
 export type GeneratedSlide = {
   slideNumber: number;
@@ -436,6 +465,9 @@ export type StoreSlideRegenerateOptions = {
   mockupColor?: string;
   mockupPose?: MockupPose;
   mockupAssetId?: MockupAssetId;
+  customBackgroundDataUrl?: string;
+  slidePatch?: Partial<StoreSlidePlan>;
+  typographyScale?: number;
 };
 
 export type UploadedScreenshot = {

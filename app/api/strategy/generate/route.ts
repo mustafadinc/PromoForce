@@ -13,9 +13,17 @@ import type { LocaleScreenshotsMap } from "@/lib/localeScreenshots";
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const profile = parseAppProfile(formData);
-    const locales = profile.locales?.length ? profile.locales : (["en"] as LocaleCode[]);
+    const parsedProfile = parseAppProfile(formData);
+    const locales = parsedProfile.locales?.length ? parsedProfile.locales : (["en"] as LocaleCode[]);
     const screenshotsByLocale = extractScreenshotsByLocale(formData, locales);
+    const uploadedSlideCount = Math.max(
+      ...locales.map((locale) => screenshotsByLocale[locale]?.length ?? 0),
+    );
+    const requestedSlideCount = Math.max(parsedProfile.slideCount ?? 0, uploadedSlideCount);
+    const profile =
+      requestedSlideCount > 0
+        ? { ...parsedProfile, slideCount: requestedSlideCount }
+        : parsedProfile;
 
     const profileError = validateAppProfile(profile);
     if (profileError) {

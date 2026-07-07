@@ -7,7 +7,7 @@ export function normalizeSharedSlideNumbers(values: unknown): number[] {
     ...new Set(
       values
         .map((value) => (typeof value === "number" ? value : Number.parseInt(String(value), 10)))
-        .filter((value) => Number.isInteger(value) && value >= 1 && value <= 5),
+        .filter((value) => Number.isInteger(value) && value >= 1 && value <= 10),
     ),
   ].sort((a, b) => a - b);
 }

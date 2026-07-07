@@ -46,8 +46,10 @@ type StoreSlideEditorProps = {
   slide: StoreSlidePlan;
   strategy: StrategyBrief;
   screenshotPreviews: ScreenshotPreview[];
+  customBackgroundUrl?: string;
   screenshotCount: number;
   isGenerating: boolean;
+  onCustomBackgroundChange?: (dataUrl: string | null) => void;
   onUpdateSlide: (patch: Partial<StoreSlidePlan>) => void;
   onAssignScene: (sceneId: string | null) => void;
 };
@@ -56,8 +58,10 @@ export function StoreSlideEditor({
   slide,
   strategy,
   screenshotPreviews,
+  customBackgroundUrl,
   screenshotCount,
   isGenerating,
+  onCustomBackgroundChange,
   onUpdateSlide,
   onAssignScene,
 }: StoreSlideEditorProps) {
@@ -69,6 +73,12 @@ export function StoreSlideEditor({
     slide.mockupAssetId ?? mockupAssetForSlide(slide.slideNumber),
   );
   const usesSceneTemplate = isSceneMockup(resolvedMockupId);
+  const handleCustomBackgroundUpload = (file: File | undefined) => {
+    if (!file || !onCustomBackgroundChange) return;
+    const reader = new FileReader();
+    reader.onload = () => onCustomBackgroundChange(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div className="pf-carousel-step pf-step-split">
@@ -187,6 +197,42 @@ export function StoreSlideEditor({
             </select>
           </label>
         ) : null}
+
+        <div className="field field-wide">
+          <span>Custom background (no AI image generation)</span>
+          <div className="slide-action-grid">
+            <label className="slide-action slide-action-custom-background">
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                disabled={isGenerating || !onCustomBackgroundChange}
+                onChange={(event) => {
+                  handleCustomBackgroundUpload(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              Upload background
+            </label>
+            {customBackgroundUrl ? (
+              <button
+                type="button"
+                className="slide-action"
+                disabled={isGenerating}
+                onClick={() => onCustomBackgroundChange?.(null)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+          {customBackgroundUrl ? (
+            <img
+              className="uploaded-background-preview"
+              src={customBackgroundUrl}
+              alt={`Slide ${slide.slideNumber} custom background`}
+            />
+          ) : null}
+        </div>
 
         {slide.screenshotUsage !== "none" || slide.screenshotIndex !== null ? (
           <div className="field field-wide mockup-pose-strategy-block">

@@ -39,6 +39,25 @@ export async function downloadMockupOnlyPng(
   strategy: StrategyBrief,
   screenshotPreviews: ScreenshotPreview[],
 ): Promise<void> {
+  const blob = await buildMockupOnlyBlob(slide, strategy, screenshotPreviews);
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+  downloadDataUrl(
+    dataUrl,
+    `app-store-mockup-${slide.slideNumber}-${APP_STORE_EXPORT_WIDTH}x${APP_STORE_EXPORT_HEIGHT}.png`,
+  );
+}
+
+export async function buildMockupOnlyBlob(
+  slide: GeneratedSlide,
+  strategy: StrategyBrief,
+  screenshotPreviews: ScreenshotPreview[],
+): Promise<Blob> {
   const plan = strategy.slides.find((item) => item.slideNumber === slide.slideNumber);
   if (!plan || plan.screenshotIndex == null) {
     throw new Error("This slide has no screenshot to composite.");
@@ -76,16 +95,5 @@ export async function downloadMockupOnlyPng(
     throw new Error(payload.error || "Mockup export failed.");
   }
 
-  const blob = await response.blob();
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-
-  downloadDataUrl(
-    dataUrl,
-    `app-store-mockup-${slide.slideNumber}-${APP_STORE_EXPORT_WIDTH}x${APP_STORE_EXPORT_HEIGHT}.png`,
-  );
+  return response.blob();
 }

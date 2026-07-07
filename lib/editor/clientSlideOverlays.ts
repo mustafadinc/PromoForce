@@ -117,10 +117,10 @@ export function computeClientOverlayLayers(input: {
   const isCta = slidePlan.asoBeat === "download_cta";
   const result: ClientOverlayLayers = {};
 
-  if (slidePlan.showAppBranding && appProfile?.appName && !isCta && profile.format === "app_store") {
+  if (false && slidePlan.showAppBranding && appProfile?.appName && !isCta && profile.format === "app_store") {
     const { textBaselineY, iconSize, fontSize } = getBrandingMetrics(scale);
     const gap = Math.round(12 * scale);
-    const label = appProfile.appName.toUpperCase();
+    const label = (appProfile?.appName ?? "").toUpperCase();
     let labelWidth = 0;
     for (const char of label) {
       labelWidth += char === " " ? fontSize * 0.35 : fontSize * 0.58;

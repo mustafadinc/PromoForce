@@ -48,7 +48,7 @@ export async function renderPerspectiveDeviceLayers(
   const frameTop = Math.round(stackY + geometry.bounds.minY * geoScale);
 
   return {
-    screen: { buffer: warpedScreen, left: screenOrigin.left, top: screenOrigin.top },
+    screen: { buffer: warpedScreen, left: Math.round(screenOrigin.left), top: Math.round(screenOrigin.top) },
     frame: { buffer: framePng, left: frameLeft, top: frameTop },
   };
 }

@@ -1393,6 +1393,47 @@ canvas:hover {
   color: var(--muted);
 }
 
+.pf-quick-slide-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.pf-quick-slide-edit > .secondary-action {
+  width: 100%;
+  justify-content: center;
+}
+
+.pf-quick-slide-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.pf-quick-slide-fields .field {
+  min-width: 0;
+}
+
+.pf-quick-slide-fields .field span {
+  font-size: 0.72rem;
+}
+
+.pf-quick-slide-fields .field input,
+.pf-quick-slide-fields .field textarea,
+.pf-quick-slide-fields .field select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  font-size: 0.78rem;
+}
+
+.pf-quick-slide-fields input[type="range"] {
+  padding-inline: 0;
+}
+
 .slide-action-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -5356,6 +5397,41 @@ canvas:hover {
   margin-bottom: 12px;
 }
 
+.pf-custom-background-field {
+  display: grid;
+  gap: 10px;
+}
+
+.pf-custom-background-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pf-custom-background-upload {
+  cursor: pointer;
+}
+
+.pf-custom-background-preview {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.pf-custom-background-preview img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.pf-custom-background-preview figcaption {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .pf-advanced-panel {
   margin-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -6435,7 +6511,7 @@ canvas:hover {
 .pf-live-editor-overlay {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 2147483000;
   display: grid;
   place-items: center;
   padding: 16px;
@@ -6454,6 +6530,8 @@ canvas:hover {
 }
 
 .pf-live-editor-header {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -6475,7 +6553,16 @@ canvas:hover {
 .pf-live-editor-header-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+.pf-live-editor-header-actions .primary-action,
+.pf-live-editor-header-actions .secondary-action {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.88rem;
 }
 
 .pf-live-editor-body {
@@ -6488,6 +6575,9 @@ canvas:hover {
 
 .pf-live-editor-stage-host {
   position: relative;
+  display: grid;
+  justify-items: center;
+  align-items: start;
   min-height: 0;
   overflow: auto;
   border-radius: 12px;
@@ -6525,6 +6615,21 @@ canvas:hover {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.pf-live-editor-panel .field input[type="range"] {
+  padding: 0;
+}
+
+.pf-live-editor-panel .field .pf-metric-input {
+  width: 92px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  justify-self: end;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .pf-text-block-label {
@@ -6630,6 +6735,15 @@ canvas:hover {
 .slide-action-live-edit {
   border-color: rgba(45, 212, 191, 0.35);
   background: rgba(45, 212, 191, 0.08);
+}
+
+.uploaded-background-preview {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-top: 10px;
 }
 
 @media (max-width: 960px) {

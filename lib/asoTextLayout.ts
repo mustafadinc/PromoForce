@@ -20,7 +20,7 @@ import {
 /** Bottom edge of logo row (reference px @ 1280w). */
 const BRANDING_ZONE_BOTTOM = 112;
 const HEADLINE_GAP_BELOW_BRAND = 36;
-const HEADLINE_TOP_BASELINE = 212;
+const HEADLINE_TOP_BASELINE = 242;
 const CAP_HEIGHT_RATIO = 0.82;
 const SUB_SIZE_DESCRIPTOR_RATIO = 0.56;
 
@@ -152,39 +152,69 @@ export function computeAsoTextLayout(
     }
   }
 
-  const verbLines = verb ? [verb] : [];
-  const descriptorLines = descriptor
-    ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, 3, locale)
-    : [];
-
-  const subLines = subheadline.trim()
-    ? wrapTextToMaxWidth(subheadline, safeWidth * 0.95, subSize, 2, locale)
-    : [];
-
-  const textTopY = computeFirstLineBaseline(
-    scale,
-    verbSize,
-    reserveTopForBranding,
-    isCta,
-    height,
-    profile,
-  );
-  const verbGap = Math.round(verbSize * 1.02);
-  const descGap = Math.round(descriptorSize * 1.12);
-  const subGap = Math.round(subSize * 1.28);
-
-  let y = textTopY + verbSize;
-  if (descriptorLines.length) {
-    y += Math.round(descriptorSize * 0.38) + descriptorLines.length * descGap;
-  } else if (verbLines.length) {
-    y += verbGap * 0.2;
-  }
-  if (subLines.length) {
-    y += Math.round(subSize * 0.55) + subLines.length * subGap;
-  }
-
   const maxTextBottom = Math.round(height * textMaxRatio);
-  const textBlockBottom = Math.min(y, maxTextBottom);
+  const verbFloor = Math.max(18, Math.round((isCta ? profile.verbSizeMinCta : profile.verbSizeMin) * scale * 0.82));
+  const descriptorFloor = Math.max(16, Math.round(profile.descriptorSize * scale * 0.28));
+  const subFloor = Math.max(14, Math.round(profile.subSizeMin * scale * 0.86));
+
+  const measure = () => {
+    const nextVerbLines = verb ? [verb] : [];
+    const nextDescriptorLines = descriptor
+      ? wrapTextToMaxWidth(descriptor, safeWidth, descriptorSize, 3, locale)
+      : [];
+    const nextSubLines = subheadline.trim()
+      ? wrapTextToMaxWidth(subheadline, safeWidth * 0.95, subSize, 2, locale)
+      : [];
+    const nextTextTopY = computeFirstLineBaseline(
+      scale,
+      verbSize,
+      reserveTopForBranding,
+      isCta,
+      height,
+      profile,
+    );
+    const verbGap = Math.round(verbSize * 1.02);
+    const descGap = Math.round(descriptorSize * 1.12);
+    const subGap = Math.round(subSize * 1.28);
+
+    let bottom = nextTextTopY + verbSize;
+    if (nextDescriptorLines.length) {
+      bottom += Math.round(descriptorSize * 0.38) + nextDescriptorLines.length * descGap;
+    } else if (nextVerbLines.length) {
+      bottom += verbGap * 0.2;
+    }
+    if (nextSubLines.length) {
+      bottom += Math.round(subSize * 0.55) + nextSubLines.length * subGap;
+    }
+
+    return {
+      verbLines: nextVerbLines,
+      descriptorLines: nextDescriptorLines,
+      subLines: nextSubLines,
+      textTopY: nextTextTopY,
+      bottom,
+    };
+  };
+
+  let measured = measure();
+  for (let i = 0; i < 8 && measured.bottom > maxTextBottom; i += 1) {
+    const currentHeight = Math.max(1, measured.bottom - measured.textTopY);
+    const allowedHeight = Math.max(1, maxTextBottom - measured.textTopY);
+    const shrink = Math.min(0.96, Math.max(0.82, (allowedHeight / currentHeight) * 0.98));
+    const nextVerbSize = Math.max(verbFloor, Math.round(verbSize * shrink));
+    const nextDescriptorSize = Math.max(descriptorFloor, Math.round(descriptorSize * shrink));
+    const nextSubSize = Math.max(subFloor, Math.round(subSize * shrink));
+    if (nextVerbSize === verbSize && nextDescriptorSize === descriptorSize && nextSubSize === subSize) {
+      break;
+    }
+    verbSize = nextVerbSize;
+    descriptorSize = nextDescriptorSize;
+    subSize = nextSubSize;
+    measured = measure();
+  }
+
+  const { verbLines, descriptorLines, subLines, textTopY } = measured;
+  const textBlockBottom = Math.min(measured.bottom, maxTextBottom);
 
   return {
     verbSize,

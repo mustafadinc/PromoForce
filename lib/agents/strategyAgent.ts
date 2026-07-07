@@ -55,7 +55,7 @@ function normalizeSlide(
   locale: LocaleCode,
 ): StoreSlidePlan {
   const slideNumber = index + 1;
-  const asoBeat = normalizeStoreSlideBeat(raw.asoBeat, slideNumber);
+  const asoBeat = normalizeStoreSlideBeat(raw.asoBeat, slideNumber, profile.slideCount);
   const beatMeta = storeSlideBeatMeta[asoBeat];
 
   const role: SlideRole =

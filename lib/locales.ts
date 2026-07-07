@@ -160,7 +160,7 @@ export function localeExpertPrompt(locale: LocaleDefinition): string {
     "Write ALL copy natively in this language — do NOT translate from English.",
     "Choose hooks and phrasing that resonate locally; each locale's copy should feel written for that market, not like a translation.",
     locale.script === "cjk"
-      ? "Headlines may be a single compelling phrase (no forced verb/descriptor split). Keep captions short and punchy."
+      ? "If the headline has a natural action/benefit structure, split into headlineVerb (action part) + headlineDescriptor (benefit part) WITHOUT adding spaces. Otherwise use a single compelling phrase in headlineVerb with empty headlineDescriptor. Keep captions short and punchy."
       : "Split headlines into headlineVerb (action verb) + headlineDescriptor (benefit words).",
   ].join(" ");
 }

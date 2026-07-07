@@ -48,7 +48,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Slide plan is required." }, { status: 400 });
     }
 
-    if (!process.env.AI_PROVIDER) {
+    const styleReferenceBase64 = String(formData.get("styleReferenceBase64") || "") || undefined;
+    const regenerateMode = String(formData.get("regenerateMode") || "full") as
+      | "full"
+      | "background"
+      | "composite";
+    const existingBackgroundBase64 =
+      String(formData.get("existingBackgroundBase64") || "") || undefined;
+
+    if (!process.env.AI_PROVIDER && !(regenerateMode === "composite" && existingBackgroundBase64)) {
       return NextResponse.json(
         {
           error: "No AI provider configured. Set AI_PROVIDER in .env.local.",
@@ -58,14 +66,6 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-
-    const styleReferenceBase64 = String(formData.get("styleReferenceBase64") || "") || undefined;
-    const regenerateMode = String(formData.get("regenerateMode") || "full") as
-      | "full"
-      | "background"
-      | "composite";
-    const existingBackgroundBase64 =
-      String(formData.get("existingBackgroundBase64") || "") || undefined;
     const mockupColor = String(formData.get("mockupColor") || "") || undefined;
     let mockupPoseOverride: ReturnType<typeof normalizeMockupPose> | undefined;
     try {

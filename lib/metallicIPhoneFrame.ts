@@ -6,18 +6,18 @@ import {
 
 /** Metallic iPhone 17 Pro frame — shared by UI preview and export composite. */
 
-export const METALLIC_FRAME_W = 430;
+export const METALLIC_FRAME_W = 431;
 export const METALLIC_FRAME_H = 900;
 
 /** Outer shell corner radius in design coordinates (matches frame SVG). */
-export const METALLIC_OUTER_RADIUS = 48;
+export const METALLIC_OUTER_RADIUS = 58;
 
 export const METALLIC_SCREEN = {
-  x: 15,
-  y: 15,
-  w: 400,
-  h: 870,
-  r: 33,
+  x: 9,
+  y: 9,
+  w: 413,
+  h: 882,
+  r: 45,
 } as const;
 
 /** Horizontal overscan — equal bleed keeps side gaps balanced. */
@@ -40,7 +40,7 @@ export const METALLIC_SCREEN_CONTAIN_SCALE = 0.99;
 export const METALLIC_SCREEN_OBJECT_ANCHOR_Y = 0.5;
 
 /** Bump when mockup fit math changes — export recompositing picks this up. */
-export const MOCKUP_SCREEN_FIT_VERSION = 15;
+export const MOCKUP_SCREEN_FIT_VERSION = 18;
 
 /** Inset from top inner bezel / Dynamic Island — room above status bar. */
 export const METALLIC_SCREEN_CONTENT_OFFSET_Y = 6;
@@ -167,45 +167,54 @@ export function generateMetallicIPhoneFrameSvg(options: MetallicFrameSvgOptions 
     <rect x="-2" y="320" width="4" height="60" rx="1.5" fill="url(#${id}-btn)"/>
     
     <!-- Right Buttons -->
-    <rect x="428" y="260" width="4" height="90" rx="1.5" fill="url(#${id}-btn)"/>
-    <rect x="428" y="560" width="2" height="70" rx="1" fill="url(#${id}-btn-dark)"/>
+    <rect x="429" y="260" width="4" height="90" rx="1.5" fill="url(#${id}-btn)"/>
+    <rect x="429" y="560" width="2" height="70" rx="1" fill="url(#${id}-btn-dark)"/>
 
     <!-- Titanium Frame Outer -->
     <path fill="url(#${id}-titanium)" fill-rule="evenodd" d="
-      M 48 0 H 382 Q 430 0 430 48 V 852 Q 430 900 382 900 H 48 Q 0 900 0 852 V 48 Q 0 0 48 0 Z
-      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
+      M 58 0 H 373 Q 431 0 431 58 V 842 Q 431 900 373 900 H 58 Q 0 900 0 842 V 58 Q 0 0 58 0 Z
+      M 58 2 H 373 Q 429 2 429 58 V 842 Q 429 898 373 898 H 58 Q 2 898 2 842 V 58 Q 2 2 58 2 Z
     "/>
     <path fill="url(#${id}-edge-shine)" fill-rule="evenodd" d="
-      M 48 0 H 382 Q 430 0 430 48 V 852 Q 430 900 382 900 H 48 Q 0 900 0 852 V 48 Q 0 0 48 0 Z
-      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
+      M 58 0 H 373 Q 431 0 431 58 V 842 Q 431 900 373 900 H 58 Q 0 900 0 842 V 58 Q 0 0 58 0 Z
+      M 58 2 H 373 Q 429 2 429 58 V 842 Q 429 898 373 898 H 58 Q 2 898 2 842 V 58 Q 2 2 58 2 Z
+    "/>
+    <path fill="none" stroke="#ffffff" stroke-opacity="0.24" stroke-width="1" d="
+      M 60 1 H 371 Q 430 1 430 60
+    "/>
+    <path fill="none" stroke="#000000" stroke-opacity="0.38" stroke-width="1.4" d="
+      M 1 66 V 834 Q 1 899 66 899 H 365
+    "/>
+    <path fill="none" stroke="#ffffff" stroke-opacity="0.11" stroke-width="1" d="
+      M 430 66 V 834 Q 430 898 365 898
     "/>
 
     <!-- Antenna Bands -->
     <rect x="100" y="0" width="4" height="3" fill="#222" opacity="0.6"/>
-    <rect x="326" y="0" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="327" y="0" width="4" height="3" fill="#222" opacity="0.6"/>
     <rect x="100" y="897" width="4" height="3" fill="#222" opacity="0.6"/>
-    <rect x="326" y="897" width="4" height="3" fill="#222" opacity="0.6"/>
+    <rect x="327" y="897" width="4" height="3" fill="#222" opacity="0.6"/>
     <rect x="0" y="150" width="3" height="4" fill="#222" opacity="0.6"/>
     <rect x="0" y="750" width="3" height="4" fill="#222" opacity="0.6"/>
-    <rect x="427" y="150" width="3" height="4" fill="#222" opacity="0.6"/>
-    <rect x="427" y="750" width="3" height="4" fill="#222" opacity="0.6"/>
+    <rect x="428" y="150" width="3" height="4" fill="#222" opacity="0.6"/>
+    <rect x="428" y="750" width="3" height="4" fill="#222" opacity="0.6"/>
 
     <!-- Black Glass Bezel -->
     <path fill="#050505" fill-rule="evenodd" d="
-      M 48 2 H 382 Q 428 2 428 48 V 852 Q 428 898 382 898 H 48 Q 2 898 2 852 V 48 Q 2 2 48 2 Z
-      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+      M 58 2 H 373 Q 429 2 429 58 V 842 Q 429 898 373 898 H 58 Q 2 898 2 842 V 58 Q 2 2 58 2 Z
+      M 54 9 H 377 Q 422 9 422 54 V 846 Q 422 891 377 891 H 54 Q 9 891 9 846 V 54 Q 9 9 54 9 Z
     "/>
     
     <!-- Screen Inner Edge Highlights (Depth) -->
     <path fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5" d="
-      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+      M 54 9 H 377 Q 422 9 422 54 V 846 Q 422 891 377 891 H 54 Q 9 891 9 846 V 54 Q 9 9 54 9 Z
     "/>
     <path fill="none" stroke="#000" stroke-width="3" d="
-      M 48 15 H 382 Q 415 15 415 48 V 852 Q 415 885 382 885 H 48 Q 15 885 15 852 V 48 Q 15 15 48 15 Z
+      M 54 9 H 377 Q 422 9 422 54 V 846 Q 422 891 377 891 H 54 Q 9 891 9 846 V 54 Q 9 9 54 9 Z
     " opacity="0.5" style="transform: translate(0, 1px)"/>
 
     <!-- Dynamic Island -->
-    <g transform="translate(152, 26)">
+    <g transform="translate(153, 26)">
       <rect x="0" y="0" width="126" height="36" rx="18" fill="#000"/>
       <!-- Face ID module -->
       <circle cx="18" cy="18" r="7" fill="#1c1c1e" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
@@ -218,8 +227,8 @@ export function generateMetallicIPhoneFrameSvg(options: MetallicFrameSvgOptions 
     </g>
     
     <!-- Top Ear Speaker Grill -->
-    <rect x="180" y="4" width="70" height="2" rx="1" fill="#000"/>
-    <rect x="180" y="4" width="70" height="2" rx="1" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+    <rect x="181" y="4" width="70" height="2" rx="1" fill="#000"/>
+    <rect x="181" y="4" width="70" height="2" rx="1" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
   </g>
 </svg>`;
 }

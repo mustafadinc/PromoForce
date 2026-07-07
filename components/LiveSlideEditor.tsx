@@ -74,9 +74,11 @@ type LiveSlideEditorProps = {
     editorState: SlideEditorState;
     headline: string;
     subheadline: string;
+    applyLayoutToAll?: boolean;
   }) => void;
   onClose: () => void;
   onRevertToOriginal?: () => void;
+  headlessMode?: boolean;
 };
 
 type InlineEditState = {
@@ -169,11 +171,13 @@ export function LiveSlideEditor({
   onSave,
   onClose,
   onRevertToOriginal,
+  headlessMode = false,
 }: LiveSlideEditorProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const deviceRef = useRef<Konva.Group>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const didHeadlessExportRef = useRef(false);
   const [displayScale, setDisplayScale] = useState(0.35);
   const [ready, setReady] = useState(false);
   const [deviceImage, setDeviceImage] = useState<HTMLCanvasElement | null>(null);
@@ -486,7 +490,7 @@ export function LiveSlideEditor({
     };
   }, [editorState, overrides]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback((applyLayoutToAll = false) => {
     const stage = stageRef.current;
     if (!stage) return;
     transformerRef.current?.nodes([]);
@@ -502,11 +506,18 @@ export function LiveSlideEditor({
       locale,
       overrides,
     });
-    onSave({ dataUrl, editorState: buildEditorStateForSave(), headline, subheadline });
+    onSave({ dataUrl, editorState: buildEditorStateForSave(), headline, subheadline, applyLayoutToAll });
     if (deviceRef.current && showDevice) {
       transformerRef.current?.nodes([deviceRef.current]);
     }
   }, [buildEditorStateForSave, onSave, overrides, showDevice, slidePlan, strategy, locale]);
+
+  useEffect(() => {
+    if (!headlessMode || !ready || didHeadlessExportRef.current) return;
+    didHeadlessExportRef.current = true;
+    const frame = window.requestAnimationFrame(() => handleExport(false));
+    return () => window.cancelAnimationFrame(frame);
+  }, [handleExport, headlessMode, ready]);
 
   const handleDownload = useCallback(() => {
     const stage = stageRef.current;
@@ -581,6 +592,16 @@ export function LiveSlideEditor({
     </button>
   );
 
+  if (headlessMode) {
+    return (
+      <div className="pf-live-editor-overlay" aria-hidden="true">
+        <div className="pf-live-editor-shell glass-panel">
+          <p className="pf-live-editor-loading">Applying layout...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pf-live-editor-overlay" role="dialog" aria-modal="true" aria-label="Live slide editor">
       <div className="pf-live-editor-shell glass-panel">
@@ -605,8 +626,11 @@ export function LiveSlideEditor({
             <button type="button" className="primary-action" onClick={handleDownload}>
               Download PNG
             </button>
-            <button type="button" className="primary-action" onClick={handleExport}>
+            <button type="button" className="primary-action" onClick={() => handleExport(false)}>
               Apply &amp; save
+            </button>
+            <button type="button" className="primary-action" onClick={() => handleExport(true)}>
+              Apply layout to all
             </button>
           </div>
         </header>

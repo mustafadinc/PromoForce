@@ -42,7 +42,7 @@ type StoreSetGalleryProps = {
     slideNumber: number,
     mode?: StoreSlideRegenerateMode,
     options?: StoreSlideRegenerateOptions,
-  ) => void;
+  ) => void | Promise<void>;
   onSelectVariant?: (slideNumber: number, variantId: string) => void;
   onUpdateSlideFromEditor?: (
     slideNumber: number,
@@ -51,6 +51,7 @@ type StoreSetGalleryProps = {
       editorState: SlideEditorState;
       headline: string;
       subheadline: string;
+      applyLayoutToAll?: boolean;
     },
   ) => void;
   onRevertSlideToOriginal?: (slideNumber: number) => void;
@@ -80,7 +81,9 @@ export function StoreSetGallery({
   const [isAuditing, setIsAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [editingSlideNumber, setEditingSlideNumber] = useState<number | null>(null);
+  const [slidesToRender, setSlidesToRender] = useState<number[]>([]);
   const [mockupDownloadError, setMockupDownloadError] = useState<string | null>(null);
+  const [isApplyingTypographyToAll, setIsApplyingTypographyToAll] = useState(false);
   const { copyMessage, copyText, clearCopyMessage } = useCopyFeedback();
 
   const readability = useMemo(
@@ -164,16 +167,68 @@ export function StoreSetGallery({
     editingSlide && strategy
       ? strategy.slides.find((slide) => slide.slideNumber === editingSlide.slideNumber) ?? null
       : null;
-  const editingScreenshotUrl =
+  const editingUsesScreenshot =
+    Boolean(editingSlidePlan) &&
+    screenshotPreviews.length > 0 &&
+    (
+      editingSlidePlan?.screenshotUsage !== "none" ||
+      editingSlidePlan?.screenshotIndex !== null ||
+      Boolean(editingSlide?.backgroundDataUrl)
+    );
+  const editingScreenshot =
     editingSlidePlan?.screenshotIndex !== null && editingSlidePlan?.screenshotIndex !== undefined
-      ? screenshotPreviews.find((shot) => shot.index === editingSlidePlan.screenshotIndex)?.previewUrl ?? null
+      ? screenshotPreviews.find((shot) => shot.index === editingSlidePlan.screenshotIndex)
       : null;
-  const editingBackgroundUrl = editingSlide?.backgroundDataUrl ?? editingSlide?.dataUrl ?? "";
+  const editingScreenshotUrl = editingUsesScreenshot
+    ? (
+        editingScreenshot ??
+        screenshotPreviews.find((shot) => shot.index === (editingSlide?.slideNumber ?? 1) - 1) ??
+        screenshotPreviews[0] ??
+        null
+      )?.previewUrl ?? null
+    : null;
+  const editingBackgroundUrl = editingSlide?.backgroundDataUrl ?? "";
 
   const downloadAll = () => {
     slides.forEach((slide, index) => {
       window.setTimeout(() => downloadSlide(slide), index * 250);
     });
+  };
+
+  const downloadAllBackgrounds = () => {
+    slides.forEach((slide, index) => {
+      if (slide.backgroundDataUrl) {
+        window.setTimeout(() => downloadBackgroundOnly(slide), index * 250);
+      }
+    });
+  };
+
+  const downloadAllMockups = () => {
+    slides.forEach((slide, index) => {
+      window.setTimeout(() => void downloadMockupOnly(slide), index * 250);
+    });
+  };
+
+  const applyTypographyToAll = async (
+    _sourceSlideNumber: number,
+    options: Pick<StoreSlideRegenerateOptions, "slidePatch" | "mockupColor" | "mockupPose" | "mockupAssetId">,
+  ) => {
+    if (!strategy || !onRegenerateSlide || isApplyingTypographyToAll) return;
+
+    setIsApplyingTypographyToAll(true);
+    try {
+      for (const plan of strategy.slides) {
+        const generated = slides.find((slide) => slide.slideNumber === plan.slideNumber);
+        if (!generated?.backgroundDataUrl) continue;
+
+        await onRegenerateSlide(plan.slideNumber, "composite", {
+          ...options,
+        });
+      }
+      void copyText("Layout applied to all slides", "Layout updated");
+    } finally {
+      setIsApplyingTypographyToAll(false);
+    }
   };
 
   const runCoherenceAudit = async () => {
@@ -256,6 +311,24 @@ export function StoreSetGallery({
             disabled={isGenerating || slides.length === 0}
           >
             Download All
+          </button>
+          <button
+            className="secondary-action compact-action"
+            type="button"
+            onClick={downloadAllBackgrounds}
+            disabled={isGenerating || slides.length === 0}
+            title="Download only the AI generated backgrounds for all slides at once"
+          >
+            Download Backgrounds
+          </button>
+          <button
+            className="secondary-action compact-action"
+            type="button"
+            onClick={downloadAllMockups}
+            disabled={isGenerating || slides.length === 0}
+            title="Download only the device mockup layer with screenshot (transparent background) for all slides at once"
+          >
+            Download Mockups
           </button>
           <label className="export-preset-field">
             <span>Device preset</span>
@@ -363,6 +436,7 @@ export function StoreSetGallery({
             <StoreSlideExportCard
               key={`${slide.slideNumber}-${"renderVersion" in slide ? slide.renderVersion ?? 0 : 0}`}
               slide={slide}
+              slidePlan={plan}
               aspectRatio={aspectRatio}
               isGenerating={isGenerating}
               isRegenerating={regeneratingSlideNumber === slide.slideNumber}
@@ -374,6 +448,8 @@ export function StoreSetGallery({
               hasMockup={hasMockup}
               onCopyHeadline={(text) => void copyText(text, "Headline copied")}
               onRegenerateSlide={onRegenerateSlide}
+              onApplyTypographyToAll={applyTypographyToAll}
+              isApplyingTypographyToAll={isApplyingTypographyToAll}
               onSelectVariant={onSelectVariant}
               onOpenLiveEditor={
                 onUpdateSlideFromEditor && strategy ? (slide) => setEditingSlideNumber(slide.slideNumber) : undefined
@@ -384,7 +460,7 @@ export function StoreSetGallery({
         })}
       </div>
 
-      {editingSlide && editingSlidePlan && strategy && onUpdateSlideFromEditor ? (
+      {editingSlide && editingSlidePlan && strategy && onUpdateSlideFromEditor && editingBackgroundUrl ? (
         <LiveSlideEditor
           slide={editingSlide}
           slidePlan={editingSlidePlan}
@@ -405,8 +481,56 @@ export function StoreSetGallery({
           onSave={(update) => {
             onUpdateSlideFromEditor(editingSlide.slideNumber, update);
             setEditingSlideNumber(null);
+            if (update.applyLayoutToAll) {
+              const others = slides
+                .filter((s) => s.slideNumber !== editingSlide.slideNumber)
+                .map((s) => s.slideNumber);
+              setSlidesToRender(others);
+            }
           }}
         />
+      ) : null}
+
+      {slidesToRender.length > 0 && strategy && onUpdateSlideFromEditor ? (
+        (() => {
+          const targetSlideNumber = slidesToRender[0];
+          const targetSlide = slides.find((s) => s.slideNumber === targetSlideNumber);
+          const targetSlidePlan = strategy.slides.find((s) => s.slideNumber === targetSlideNumber);
+          if (!targetSlide || !targetSlidePlan) return null;
+
+          const targetScreenshot =
+            targetSlidePlan.screenshotIndex !== null && targetSlidePlan.screenshotIndex !== undefined
+              ? screenshotPreviews.find((shot) => shot.index === targetSlidePlan.screenshotIndex)
+              : null;
+          const screenshotUrl = (
+            targetScreenshot ??
+            screenshotPreviews.find((shot) => shot.index === targetSlideNumber - 1) ??
+            screenshotPreviews[0] ??
+            null
+          )?.previewUrl ?? null;
+          const backgroundUrl = targetSlide.backgroundDataUrl || "";
+
+          return (
+            <LiveSlideEditor
+              key={`headless-${targetSlideNumber}`}
+              slide={targetSlide}
+              slidePlan={targetSlidePlan}
+              strategy={strategy}
+              appProfile={appProfile}
+              screenshotUrl={screenshotUrl}
+              backgroundUrl={backgroundUrl}
+              sourceDataUrl={targetSlide.sourceDataUrl ?? targetSlide.dataUrl}
+              headlessMode={true}
+              onClose={() => {
+                setSlidesToRender((prev) => prev.slice(1));
+              }}
+              onSave={(update) => {
+                onUpdateSlideFromEditor(targetSlideNumber, update);
+                setSlidesToRender((prev) => prev.slice(1));
+              }}
+            />
+          );
+        })()
       ) : null}
 
       <CopyToast message={copyMessage} onDismiss={clearCopyMessage} />

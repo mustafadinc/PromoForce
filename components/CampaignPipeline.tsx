@@ -43,6 +43,7 @@ export function CampaignPipeline() {
     socialStrategy,
     autopilotStrategy,
     screenshotPreviews,
+    customBackgroundsForActiveLocale,
     hasEdits,
     generatedSlides,
     generatedSocialAssets,
@@ -67,6 +68,7 @@ export function CampaignPipeline() {
     goToGallery,
     setStoreStrategy,
     switchActiveLocale,
+    setCustomSlideBackground,
     setSocialStrategy,
     setAutopilotStrategy,
     resetStrategyToAi,
@@ -204,11 +206,13 @@ export function CampaignPipeline() {
                     strategy={storeStrategy}
                     appProfile={profile}
                     screenshotPreviews={screenshotPreviews}
+                    customBackgroundsBySlide={customBackgroundsForActiveLocale}
                     hasEdits={hasEdits}
                     isGenerating={isGenerating}
                     activeLocale={activeLocale}
                     locales={Object.keys(storeStrategiesByLocale) as import("@/lib/campaignTypes").LocaleCode[]}
                     onLocaleChange={switchActiveLocale}
+                    onCustomBackgroundChange={setCustomSlideBackground}
                     onStrategyChange={setStoreStrategy}
                     onResetStrategy={resetStrategyToAi}
                     onGenerate={generateCampaign}

@@ -17,7 +17,7 @@ import {
   serializeCampaignSession,
 } from "@/lib/campaignSessionPersistence";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatPerformanceForPrompt } from "@/lib/performanceMemory";
 import { canGenerate, recordGenerations } from "@/lib/usageLimits";
 import {
@@ -29,7 +29,12 @@ import { addDaysToDate } from "@/lib/scheduleUtils";
 import { persistCampaignAsset } from "@/lib/client/persistCampaignAsset";
 import { appendProgrammaticVideoFields } from "@/lib/buildProgrammaticVideoForm";
 import { dataUrlToBase64Payload } from "@/lib/compactClientImage";
-import { resolveLockedTypographyForSlide } from "@/lib/resolveLockedTypography";
+import {
+  applyRelativeSlideTypographyScales,
+  computeTypographyForSlide,
+  resolveLockedTypographyForSlide,
+} from "@/lib/resolveLockedTypography";
+import { normalizeSlideEdit } from "@/lib/normalizeSlideEdit";
 import type {
   AppProfile,
   AutopilotConfig,
@@ -63,9 +68,35 @@ import {
   normalizeLocaleScreenshotsMap,
 } from "@/lib/localeScreenshots";
 import { normalizeMockupAssetId } from "@/lib/assetMockup";
+import { getBeatForSlide } from "@/lib/storeSetAsoFramework";
+
+function normalizeStrategyBeats(strategy: StrategyBrief | null): StrategyBrief | null {
+  if (!strategy) return null;
+  const slideCount = strategy.slides.length;
+  return {
+    ...strategy,
+    slides: strategy.slides.map((slide) => ({
+      ...slide,
+      asoBeat: getBeatForSlide(slide.slideNumber, slideCount),
+    })),
+  };
+}
 
 function jsonEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function scaleLockedTypography(
+  typography: LockedTypography | undefined,
+  scale: number | undefined,
+): LockedTypography | undefined {
+  if (!typography || !scale || Math.abs(scale - 1) < 0.01) return typography;
+  const safeScale = Math.min(1.35, Math.max(0.65, scale));
+  return {
+    verbSize: Math.round(typography.verbSize * safeScale),
+    descriptorSize: Math.round(typography.descriptorSize * safeScale),
+    subSize: Math.round(typography.subSize * safeScale),
+  };
 }
 
 async function resolveDataUrl(imageSource: string) {
@@ -89,7 +120,13 @@ export function useCampaignPipeline() {
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [screenshots, setScreenshots] = useState<UploadedScreenshot[]>([]);
   const [screenshotsByLocale, setScreenshotsByLocale] = useState<LocaleScreenshotsMap>({});
-  const [storeStrategy, setStoreStrategy] = useState<StrategyBrief | null>(null);
+  const [storeStrategy, _setStoreStrategy] = useState<StrategyBrief | null>(null);
+  const setStoreStrategy = useCallback((val: StrategyBrief | null | ((prev: StrategyBrief | null) => StrategyBrief | null)) => {
+    _setStoreStrategy((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      return normalizeStrategyBeats(next);
+    });
+  }, []);
   const [storeStrategiesByLocale, setStoreStrategiesByLocale] = useState<
     Partial<Record<LocaleCode, StrategyBrief>>
   >({});
@@ -104,6 +141,7 @@ export function useCampaignPipeline() {
   const [generatedSlides, setGeneratedSlides] = useState<GeneratedSlide[]>([]);
   const [generatedSocialAssets, setGeneratedSocialAssets] = useState<GeneratedSocialAsset[]>([]);
   const [generatedCalendarPosts, setGeneratedCalendarPosts] = useState<GeneratedCalendarPost[]>([]);
+  const [customBackgroundsBySlide, setCustomBackgroundsBySlide] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState("");
   const [isPlanning, setIsPlanning] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -317,6 +355,41 @@ export function useCampaignPipeline() {
     [screenshots],
   );
 
+  const customBackgroundKey = (locale: LocaleCode, slideNumber: number) => `${locale}:${slideNumber}`;
+
+  const getCustomBackgroundForSlide = (locale: LocaleCode, slideNumber: number) =>
+    customBackgroundsBySlide[customBackgroundKey(locale, slideNumber)];
+
+  const customBackgroundsForActiveLocale = useMemo(() => {
+    const entries = Object.entries(customBackgroundsBySlide)
+      .map(([key, dataUrl]) => {
+        const [locale, slideNumber] = key.split(":");
+        return {
+          locale,
+          slideNumber: Number(slideNumber),
+          dataUrl,
+        };
+      })
+      .filter((entry) => entry.locale === activeLocale && Number.isFinite(entry.slideNumber));
+    return Object.fromEntries(entries.map((entry) => [entry.slideNumber, entry.dataUrl])) as Record<number, string>;
+  }, [activeLocale, customBackgroundsBySlide]);
+
+  const setCustomSlideBackground = (
+    slideNumber: number,
+    dataUrl: string | null,
+    locale: LocaleCode = activeLocale,
+  ) => {
+    setCustomBackgroundsBySlide((current) => {
+      const key = customBackgroundKey(locale, slideNumber);
+      if (!dataUrl) {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      }
+      return { ...current, [key]: dataUrl };
+    });
+  };
+
   const appendProfileFields = (formData: FormData) => {
     if (!profile) return;
 
@@ -324,6 +397,9 @@ export function useCampaignPipeline() {
     formData.append("category", profile.category);
     formData.append("description", profile.description);
     formData.append("targetAudience", profile.targetAudience);
+    if (profile.slideCount) {
+      formData.append("slideCount", String(profile.slideCount));
+    }
     if (profile.locales?.length) {
       formData.append("locales", JSON.stringify(profile.locales));
     }
@@ -377,11 +453,20 @@ export function useCampaignPipeline() {
       : { en: Array.isArray(input) ? input : flattenLocaleScreenshots(input) };
     const primaryLocale = locales[0] ?? "en";
     const nextScreenshots = getScreenshotsForLocale(nextByLocale, primaryLocale, []);
+    const uploadedSlideCount = Math.max(
+      ...locales.map((locale) => nextByLocale[locale]?.length ?? 0),
+      nextScreenshots.length,
+    );
+    const requestedSlideCount = Math.max(nextProfile.slideCount ?? 0, uploadedSlideCount);
+    const effectiveProfile =
+      isAppStore && requestedSlideCount > 0
+        ? { ...nextProfile, slideCount: requestedSlideCount }
+        : nextProfile;
 
     setIsPlanning(true);
     setErrorMessage("");
     setCampaignType(nextCampaignType);
-    setProfile(nextProfile);
+    setProfile(effectiveProfile);
     setLocaleMismatchCount(
       localeMismatchWarnings ? Object.keys(localeMismatchWarnings).length : 0,
     );
@@ -390,9 +475,10 @@ export function useCampaignPipeline() {
     setGeneratedSlides([]);
     setGeneratedSocialAssets([]);
     setGeneratedCalendarPosts([]);
+    setCustomBackgroundsBySlide({});
     setStoreStrategy(null);
     setStoreStrategiesByLocale({});
-    setActiveLocale(nextProfile.locales?.[0] || "en");
+    setActiveLocale(effectiveProfile.locales?.[0] || "en");
     setAiStoreStrategy(null);
     setSocialStrategy(null);
     setAiSocialStrategy(null);
@@ -401,24 +487,27 @@ export function useCampaignPipeline() {
 
     try {
       const formData = new FormData();
-      formData.append("appName", nextProfile.appName);
-      formData.append("category", nextProfile.category);
-      formData.append("description", nextProfile.description);
-      formData.append("targetAudience", nextProfile.targetAudience);
-      if (nextProfile.locales?.length) {
-        formData.append("locales", JSON.stringify(nextProfile.locales));
+      formData.append("appName", effectiveProfile.appName);
+      formData.append("category", effectiveProfile.category);
+      formData.append("description", effectiveProfile.description);
+      formData.append("targetAudience", effectiveProfile.targetAudience);
+      if (effectiveProfile.slideCount) {
+        formData.append("slideCount", String(effectiveProfile.slideCount));
       }
-      if (nextProfile.appTitle) formData.append("appTitle", nextProfile.appTitle);
-      if (nextProfile.appSubtitle) formData.append("appSubtitle", nextProfile.appSubtitle);
-      if (nextProfile.keywords) formData.append("keywords", nextProfile.keywords);
-      if (nextProfile.socialProof?.reviewQuotes?.length) {
-        formData.append("reviewQuotes", nextProfile.socialProof.reviewQuotes.join("\n"));
+      if (effectiveProfile.locales?.length) {
+        formData.append("locales", JSON.stringify(effectiveProfile.locales));
       }
-      if (nextProfile.socialProof?.downloadCount) {
-        formData.append("downloadCount", nextProfile.socialProof.downloadCount);
+      if (effectiveProfile.appTitle) formData.append("appTitle", effectiveProfile.appTitle);
+      if (effectiveProfile.appSubtitle) formData.append("appSubtitle", effectiveProfile.appSubtitle);
+      if (effectiveProfile.keywords) formData.append("keywords", effectiveProfile.keywords);
+      if (effectiveProfile.socialProof?.reviewQuotes?.length) {
+        formData.append("reviewQuotes", effectiveProfile.socialProof.reviewQuotes.join("\n"));
       }
-      if (nextProfile.socialProof?.rating) {
-        formData.append("rating", String(nextProfile.socialProof.rating));
+      if (effectiveProfile.socialProof?.downloadCount) {
+        formData.append("downloadCount", effectiveProfile.socialProof.downloadCount);
+      }
+      if (effectiveProfile.socialProof?.rating) {
+        formData.append("rating", String(effectiveProfile.socialProof.rating));
       }
       if (isAppStore) {
         appendLocaleScreenshotsToFormData(formData, nextByLocale, locales);
@@ -429,15 +518,15 @@ export function useCampaignPipeline() {
       let endpoint = "/api/strategy/generate";
       if (nextCampaignType === "social_launch") {
         endpoint = "/api/strategy/generate-social";
-        formData.append("performanceContext", formatPerformanceForPrompt(nextProfile.appName));
+        formData.append("performanceContext", formatPerformanceForPrompt(effectiveProfile.appName));
       }
       if (nextCampaignType === "marketing_autopilot") {
         endpoint = "/api/strategy/generate-autopilot";
         formData.append("duration", String(autopilotConfig?.duration || 7));
         formData.append("startDate", autopilotConfig?.startDate || new Date().toISOString().slice(0, 10));
-        formData.append("performanceContext", formatPerformanceForPrompt(nextProfile.appName));
+        formData.append("performanceContext", formatPerformanceForPrompt(effectiveProfile.appName));
 
-        const brandMemory = loadBrandMemory(nextProfile.appName);
+        const brandMemory = loadBrandMemory(effectiveProfile.appName);
         if (brandMemory) {
           formData.append("brandMemory", JSON.stringify(brandMemory));
         }
@@ -452,7 +541,7 @@ export function useCampaignPipeline() {
 
       if (nextCampaignType === "app_store") {
         const strategies = (result.strategies || {}) as Partial<Record<LocaleCode, StrategyBrief>>;
-        const primary = (result.primaryLocale || nextProfile.locales?.[0] || "en") as LocaleCode;
+        const primary = (result.primaryLocale || effectiveProfile.locales?.[0] || "en") as LocaleCode;
         setStoreStrategiesByLocale(strategies);
         setActiveLocale(primary);
         setStoreStrategy(result.strategy || strategies[primary] || null);
@@ -567,7 +656,12 @@ export function useCampaignPipeline() {
 
     try {
       const totalCalls =
-        strategiesToGenerate.reduce((sum, [, strategy]) => sum + strategy.slides.length, 0) *
+        strategiesToGenerate.reduce(
+          (sum, [locale, strategy]) =>
+            sum +
+            strategy.slides.filter((slide) => !getCustomBackgroundForSlide(locale, slide.slideNumber)).length,
+          0,
+        ) *
         variantsPerSlide;
       assertCanGenerate(totalCalls);
 
@@ -586,28 +680,40 @@ export function useCampaignPipeline() {
 
           const variantResults: GeneratedSlideVariant[] = [];
           let lastGenerationResult: Awaited<ReturnType<typeof generateSingleStoreSlide>> | null = null;
+          const customBackgroundDataUrl = getCustomBackgroundForSlide(locale, slide.slideNumber);
+          const slideVariantCount = customBackgroundDataUrl ? 1 : variantsPerSlide;
 
-          for (let variantIndex = 0; variantIndex < variantsPerSlide; variantIndex += 1) {
+          for (let variantIndex = 0; variantIndex < slideVariantCount; variantIndex += 1) {
             if (signal.aborted) break;
 
-            const slideLockedTypography =
-              lockedTypography ?? resolveLockedTypographyForSlide(localeStrategy, slide);
+            const anchorSlide = localeStrategy.slides.find(
+              (candidate) => candidate.slideNumber === (localeStrategy.styleAnchorSlide || 1),
+            );
+            const slideLockedTypography = lockedTypography
+              ? applyRelativeSlideTypographyScales(lockedTypography, slide, anchorSlide)
+              : resolveLockedTypographyForSlide(localeStrategy, slide, locale);
+            const shouldReuseSceneBackgrounds = localeStrategy.setMode !== "lifestyle";
 
             const result = await generateSingleStoreSlide(
               slide,
               localeStrategy,
               signal,
-              backgroundSceneCache,
+              shouldReuseSceneBackgrounds ? backgroundSceneCache : {},
               slideLockedTypography,
               styleReferenceDataUrl,
               (message) =>
                 setProgressLabel(
-                  variantsPerSlide > 1
+                  slideVariantCount > 1
                     ? `[${locale}] Slide ${slide.slideNumber} v${variantIndex + 1}: ${message}`
                     : `[${locale}] Slide ${slide.slideNumber}: ${message}`,
                 ),
               (dataUrl) => setPartialPreviewUrl(dataUrl),
-              undefined,
+              customBackgroundDataUrl
+                ? {
+                    regenerateMode: "composite",
+                    existingBackgroundDataUrl: customBackgroundDataUrl,
+                  }
+                : undefined,
               locale,
             );
             lastGenerationResult = result;
@@ -620,6 +726,7 @@ export function useCampaignPipeline() {
             const resolved = await resolveDataUrl(imageSource);
 
             if (
+              shouldReuseSceneBackgrounds &&
               slide.backgroundSceneId &&
               typeof result.backgroundDataUrl === "string" &&
               !backgroundSceneCache[slide.backgroundSceneId]
@@ -642,7 +749,9 @@ export function useCampaignPipeline() {
               dataUrl: resolved,
               prompt: String(result.revisedPrompt || result.prompt || ""),
             });
-            bumpUsage(1);
+            if (!customBackgroundDataUrl) {
+              bumpUsage(1);
+            }
           }
 
           const selected = variantResults[0];
@@ -702,10 +811,26 @@ export function useCampaignPipeline() {
     const localeStrategy = storeStrategiesByLocale[slideLocale] ?? storeStrategy;
     const slide = localeStrategy.slides.find((s) => s.slideNumber === slideNumber);
     if (!slide) return;
+    const localeShots = getScreenshotsForLocale(screenshotsByLocale, slideLocale, screenshots);
+    const effectiveSlide = options?.slidePatch
+      ? normalizeSlideEdit(slide, options.slidePatch, localeShots.length, {
+          strategy: localeStrategy,
+          appProfile: profile,
+        })
+      : slide;
+    const effectiveStrategy =
+      effectiveSlide === slide
+        ? localeStrategy
+        : {
+            ...localeStrategy,
+            slides: localeStrategy.slides.map((item) =>
+              item.slideNumber === slideNumber ? effectiveSlide : item,
+            ),
+          };
 
     const existingSlide = generatedSlides.find((s) => s.slideNumber === slideNumber);
 
-    if (mode === "composite" && !existingSlide?.backgroundDataUrl) {
+    if (mode === "composite" && !existingSlide?.backgroundDataUrl && !options?.customBackgroundDataUrl) {
       setErrorMessage(
         "Saved background missing for this slide. Run a full generate or Redo background first.",
       );
@@ -729,11 +854,13 @@ export function useCampaignPipeline() {
     };
 
     try {
-      assertCanGenerate(1);
+      if (mode !== "composite") {
+        assertCanGenerate(1);
+      }
       const backgroundSceneCache: Record<string, string> = {};
       const existingAnchor = generatedSlides.find(
         (s) =>
-          s.slideNumber === (localeStrategy.styleAnchorSlide || 1) &&
+          s.slideNumber === (effectiveStrategy.styleAnchorSlide || 1) &&
           (s.locale ?? activeLocale) === slideLocale,
       );
 
@@ -745,29 +872,35 @@ export function useCampaignPipeline() {
             : "full slide";
 
       const result = await generateSingleStoreSlide(
-        slide,
-        localeStrategy,
+        effectiveSlide,
+        effectiveStrategy,
         signal,
         backgroundSceneCache,
-        resolveLockedTypographyForSlide(localeStrategy, slide),
+        scaleLockedTypography(
+          resolveLockedTypographyForSlide(effectiveStrategy, effectiveSlide, slideLocale) ??
+            (options?.typographyScale ? computeTypographyForSlide(effectiveSlide, slideLocale) : undefined),
+          options?.typographyScale,
+        ),
         existingAnchor?.dataUrl,
         (message) => setProgressLabel(`Regenerating ${modeLabel} (slide ${slideNumber}): ${message}`),
         (dataUrl, stage) => applySlidePreview(dataUrl, stage),
         {
           regenerateMode: mode,
           existingBackgroundDataUrl:
-            mode === "composite" ? existingSlide?.backgroundDataUrl : undefined,
+            mode === "composite"
+              ? options?.customBackgroundDataUrl ?? existingSlide?.backgroundDataUrl
+              : undefined,
           mockupColor:
             options?.mockupColor ??
             (mode === "composite" ? existingSlide?.mockupColor : undefined),
           mockupPose:
             options?.mockupPose ??
-            (mode === "composite" ? existingSlide?.mockupPose : slide.mockupPose),
+            (mode === "composite" ? existingSlide?.mockupPose : effectiveSlide.mockupPose),
           mockupAssetId:
             options?.mockupAssetId ??
             (mode === "composite"
-              ? existingSlide?.mockupAssetId ?? slide.mockupAssetId
-              : slide.mockupAssetId),
+              ? existingSlide?.mockupAssetId ?? effectiveSlide.mockupAssetId
+              : effectiveSlide.mockupAssetId),
         },
         slideLocale,
       );
@@ -781,26 +914,30 @@ export function useCampaignPipeline() {
       const backgroundDataUrl =
         typeof result.backgroundDataUrl === "string"
           ? result.backgroundDataUrl
-          : existingSlide?.backgroundDataUrl;
+          : options?.customBackgroundDataUrl ?? existingSlide?.backgroundDataUrl;
 
       const mockupColor = options?.mockupColor ?? existingSlide?.mockupColor;
       const mockupPose =
         options?.mockupPose ??
         (mode === "composite"
-          ? existingSlide?.mockupPose ?? slide.mockupPose
-          : slide.mockupPose ?? existingSlide?.mockupPose);
+          ? existingSlide?.mockupPose ?? effectiveSlide.mockupPose
+          : effectiveSlide.mockupPose ?? existingSlide?.mockupPose);
       const mockupAssetId =
         mode === "composite"
           ? normalizeMockupAssetId(
-              options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? slide.mockupAssetId,
+              options?.mockupAssetId ?? existingSlide?.mockupAssetId ?? effectiveSlide.mockupAssetId,
             )
-          : normalizeMockupAssetId(options?.mockupAssetId ?? slide.mockupAssetId ?? existingSlide?.mockupAssetId);
+          : normalizeMockupAssetId(options?.mockupAssetId ?? effectiveSlide.mockupAssetId ?? existingSlide?.mockupAssetId);
 
       setGeneratedSlides((prev) =>
         prev.map((item) =>
           item.slideNumber === slideNumber
             ? {
                 ...item,
+                role: effectiveSlide.role,
+                asoBeat: effectiveSlide.asoBeat,
+                headline: effectiveSlide.headline,
+                subheadline: effectiveSlide.subheadline,
                 dataUrl: resolved,
                 prompt: String(result.revisedPrompt || result.prompt || ""),
                 backgroundDataUrl,
@@ -814,7 +951,30 @@ export function useCampaignPipeline() {
             : item,
         ),
       );
-      bumpUsage(1);
+      if (options?.slidePatch) {
+        const applyPatchToStrategy = (strategyToPatch: StrategyBrief | null | undefined) => {
+          if (!strategyToPatch) return strategyToPatch ?? null;
+          return {
+            ...strategyToPatch,
+            slides: strategyToPatch.slides.map((item) =>
+              item.slideNumber === slideNumber
+                ? normalizeSlideEdit(item, options.slidePatch!, localeShots.length, {
+                    strategy: strategyToPatch,
+                    appProfile: profile,
+                  })
+                : item,
+            ),
+          };
+        };
+        setStoreStrategy((current) => applyPatchToStrategy(current) ?? effectiveStrategy);
+        setStoreStrategiesByLocale((current) => ({
+          ...current,
+          [slideLocale]: applyPatchToStrategy(current[slideLocale] ?? effectiveStrategy) ?? effectiveStrategy,
+        }));
+      }
+      if (mode !== "composite") {
+        bumpUsage(1);
+      }
       setProgressLabel(`Slide ${slideNumber} regenerated.`);
     } catch (error) {
       if (!isCancelledError(error)) {
@@ -853,24 +1013,93 @@ export function useCampaignPipeline() {
       editorState: SlideEditorState;
       headline: string;
       subheadline: string;
+      applyLayoutToAll?: boolean;
     },
   ) => {
-      setGeneratedSlides((prev) =>
-        prev.map((slide) =>
-          slide.slideNumber === slideNumber
-            ? {
-                ...slide,
-                dataUrl: update.dataUrl,
-                sourceDataUrl: slide.sourceDataUrl ?? slide.dataUrl,
-                editorState: update.editorState,
-                headline: update.headline,
-                subheadline: update.subheadline,
-                renderVersion: Date.now(),
-              }
-            : slide,
-        ),
+    setStoreStrategy((prevStrategy) => {
+      if (!prevStrategy) return null;
+      const nextStrategy = {
+        ...prevStrategy,
+        slides: prevStrategy.slides.map((s) => {
+          if (s.slideNumber === slideNumber) {
+            return {
+              ...s,
+              headline: update.headline,
+              subheadline: update.subheadline,
+            };
+          }
+          return s;
+        }),
+      };
+      if (nextStrategy.locale) {
+        setStoreStrategiesByLocale((current) => ({
+          ...current,
+          [nextStrategy.locale!]: nextStrategy,
+        }));
+      }
+      return nextStrategy;
+    });
+
+    setGeneratedSlides((prev) => {
+      const baseEditorState = update.editorState;
+        return prev.map((slide) => {
+          if (slide.slideNumber === slideNumber) {
+            return {
+              ...slide,
+              dataUrl: update.dataUrl,
+              sourceDataUrl: slide.sourceDataUrl ?? slide.dataUrl,
+              editorState: baseEditorState,
+              headline: update.headline,
+              subheadline: update.subheadline,
+              renderVersion: Date.now(),
+            };
+          }
+          if (update.applyLayoutToAll) {
+            const targetMockupAssetId = baseEditorState.device.mockupAssetId;
+
+            const targetEditorState: SlideEditorState = {
+              version: baseEditorState.version,
+              textStyles: {
+                ...(slide.editorState?.textStyles ?? {}),
+                verb: { ...(slide.editorState?.textStyles?.verb ?? {}), ...baseEditorState.textStyles?.verb },
+                descriptor: { ...(slide.editorState?.textStyles?.descriptor ?? {}), ...baseEditorState.textStyles?.descriptor },
+                accent: { ...(slide.editorState?.textStyles?.accent ?? {}), ...baseEditorState.textStyles?.accent },
+                sub: { ...(slide.editorState?.textStyles?.sub ?? {}), ...baseEditorState.textStyles?.sub },
+                branding: { ...(slide.editorState?.textStyles?.branding ?? {}), ...baseEditorState.textStyles?.branding },
+              },
+              device: {
+                ...(slide.editorState?.device ?? baseEditorState.device),
+                scale: baseEditorState.device.scale,
+                rotationDeg: baseEditorState.device.rotationDeg,
+                xPct: baseEditorState.device.xPct,
+                yPct: baseEditorState.device.yPct,
+                frameColor: baseEditorState.device.frameColor,
+                mockupAssetId: targetMockupAssetId,
+              },
+              overlays: {
+                ...(slide.editorState?.overlays ?? {}),
+                ...baseEditorState.overlays,
+              },
+              hiddenLayers: {
+                ...(slide.editorState?.hiddenLayers ?? {}),
+                ...baseEditorState.hiddenLayers,
+              },
+              overrides: slide.editorState?.overrides ?? {},
+            };
+            return {
+              ...slide,
+              editorState: targetEditorState,
+              renderVersion: Date.now(),
+            };
+          }
+          return slide;
+        });
+      });
+      setProgressLabel(
+        update.applyLayoutToAll
+          ? `Slide ${slideNumber} and all other slides updated from live editor.`
+          : `Slide ${slideNumber} updated from live editor.`
       );
-      setProgressLabel(`Slide ${slideNumber} updated from live editor.`);
   };
 
   const revertGeneratedSlideToOriginal = (slideNumber: number) => {
@@ -1234,6 +1463,7 @@ export function useCampaignPipeline() {
     setGeneratedSlides([]);
     setGeneratedSocialAssets([]);
     setGeneratedCalendarPosts([]);
+    setCustomBackgroundsBySlide({});
     setErrorMessage("");
     setProgressLabel("");
   };
@@ -1244,7 +1474,12 @@ export function useCampaignPipeline() {
   };
 
   const resetStrategyToAi = () => {
-    if (campaignType === "app_store" && aiStoreStrategy) setStoreStrategy(aiStoreStrategy);
+    if (campaignType === "app_store" && aiStoreStrategy) {
+      const locale = aiStoreStrategy.locale || activeLocale;
+      const next = { ...aiStoreStrategy, locale };
+      setStoreStrategy(next);
+      setStoreStrategiesByLocale((current) => ({ ...current, [locale]: next }));
+    }
     if (campaignType === "social_launch" && aiSocialStrategy) setSocialStrategy(aiSocialStrategy);
     if (campaignType === "marketing_autopilot" && aiAutopilotStrategy) setAutopilotStrategy(aiAutopilotStrategy);
   };
@@ -1274,10 +1509,10 @@ export function useCampaignPipeline() {
   };
 
   const updateStoreStrategy = (strategy: StrategyBrief) => {
-    setStoreStrategy(strategy);
-    if (strategy.locale) {
-      setStoreStrategiesByLocale((current) => ({ ...current, [strategy.locale!]: strategy }));
-    }
+    const locale = strategy.locale || activeLocale;
+    const next = { ...strategy, locale };
+    setStoreStrategy(next);
+    setStoreStrategiesByLocale((current) => ({ ...current, [locale]: next }));
   };
 
   return {
@@ -1292,6 +1527,7 @@ export function useCampaignPipeline() {
     socialStrategy,
     autopilotStrategy,
     screenshotPreviews,
+    customBackgroundsForActiveLocale,
     hasEdits,
     generatedSlides,
     generatedSocialAssets,
@@ -1316,6 +1552,7 @@ export function useCampaignPipeline() {
     goToGallery,
     setStoreStrategy: updateStoreStrategy,
     switchActiveLocale,
+    setCustomSlideBackground,
     setSocialStrategy,
     setAutopilotStrategy,
     resetStrategyToAi,
